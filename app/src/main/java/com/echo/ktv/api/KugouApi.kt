@@ -4,19 +4,11 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import okhttp3.*
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.IOException
-import java.util.UUID
-
-data class MvItem(
-    val title: String,
-    val artist: String,
-    val mvHash: String,
-    val duration: Int,
-    val cover: String
-)
+import java.util.concurrent.TimeUnit
 
 data class SongItem(
     val title: String,
@@ -26,48 +18,60 @@ data class SongItem(
     val duration: Int
 )
 
+data class MvItem(
+    val title: String,
+    val artist: String,
+    val mvHash: String,
+    val duration: Int,
+    val imgUrl: String
+)
+
 object KugouApi {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
     private val gson = Gson()
+    private const val mid = "2882303761517560020"
     private const val BASE_URL = "https://gateway.kugou.com"
 
-    private val mid = UUID.randomUUID().toString().replace("-", "").substring(0, 16)
-    private const val dfid = "android-ktv-device-dfid"
+    // Real NetEase Direct Audio URL Mapping for mock songs
+    private val directUrlMap = mapOf(
+        "c2d3a672834b6b6697a4a2a4b8df77a2" to "https://music.163.com/song/media/outer/url?id=186016.mp3", // 晴天
+        "f0a8d672834b6b6697a4a2a4b8df66a3" to "https://music.163.com/song/media/outer/url?id=65538.mp3",  // 十年
+        "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d" to "https://music.163.com/song/media/outer/url?id=347230.mp3", // 海阔天空
+        "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d" to "https://music.163.com/song/media/outer/url?id=210049.mp3", // 倒带
+        "0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a" to "https://music.163.com/song/media/outer/url?id=254486.mp3", // 忽然之间
+        "e9f0d611834b6b6697a4a2a4b8df22a4" to "https://music.163.com/song/media/outer/url?id=254485.mp3", // 后来
+        "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7" to "https://music.163.com/song/media/outer/url?id=185965.mp3", // 七里香
+        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d" to "https://music.163.com/song/media/outer/url?id=188214.mp3", // 吻别
+        "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d" to "https://music.163.com/song/media/outer/url?id=29814898.mp3", // 泡沫
+        "2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d" to "https://music.163.com/song/media/outer/url?id=186001.mp3", // 江南
+        "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" to "https://music.163.com/song/media/outer/url?id=28815250.mp3", // 平凡之路
+        "e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6" to "https://music.163.com/song/media/outer/url?id=496841267.mp3", // 消愁
+        "4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d" to "https://music.163.com/song/media/outer/url?id=25707139.mp3",  // 那些年
+        "3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d" to "https://music.163.com/song/media/outer/url?id=347231.mp3",  // 光辉岁月
+        "4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e" to "https://music.163.com/song/media/outer/url?id=314016.mp3",   // 偏偏喜欢你
+        "5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f" to "https://music.163.com/song/media/outer/url?id=461347998.mp3", // Shape of You
+        "6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a" to "https://music.163.com/song/media/outer/url?id=32410313.mp3"  // Yesterday Once More
+    )
 
     private fun getCommonHeaders(clientTime: String): Headers {
         return Headers.Builder()
-            .add("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
-            .add("dfid", dfid)
+            .add("DF", "0")
+            .add("Mid", mid)
+            .add("Uuid", "0")
             .add("clienttime", clientTime)
-            .add("mid", mid)
+            .add("clientver", SignatureUtils.CLIENT_VER)
+            .add("appid", SignatureUtils.APP_ID)
+            .add("User-Agent", "Android712-AndroidPhone-8983-18-0-wifi")
             .build()
     }
 
-    fun searchMV(keyword: String, page: Int = 1, callback: (Result<List<MvItem>>) -> Unit) {
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "albumhide" to "0",
-            "iscorrection" to "1",
-            "keyword" to keyword,
-            "nocollect" to "0",
-            "page" to page.toString(),
-            "pagesize" to "30",
-            "platform" to "AndroidFilter",
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTime
-        )
-        params["signature"] = SignatureUtils.signatureAndroidParams(params)
-
-        val urlBuilder = "$BASE_URL/v1/search/mv".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
-        }
-
+    fun searchMV(keyword: String, callback: (Result<List<MvItem>>) -> Unit) {
+        val url = "http://mobilecdn.kugou.com/api/v3/search/mv?keyword=$keyword&page=1&pagesize=30"
         val request = Request.Builder()
-            .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
-            .addHeader("x-router", "complexsearch.kugou.com")
+            .url(url)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -79,24 +83,19 @@ object KugouApi {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val data = json.getAsJsonObject("data") ?: json
-                    val lists = data.getAsJsonArray("lists") ?: JsonArray()
+                    val data = json.getAsJsonObject("data")
+                    val info = data.getAsJsonArray("info")
                     
-                    if (lists.size() == 0) {
-                        callback(Result.success(getFallbackMvs(keyword)))
-                        return
-                    }
-
                     val result = mutableListOf<MvItem>()
-                    for (element in lists) {
+                    for (element in info) {
                         val itemObj = element.asJsonObject
-                        val title = itemObj.get("SongName")?.asString ?: "未知MV"
-                        val artist = itemObj.get("SingerName")?.asString ?: ""
-                        val mvHash = itemObj.get("MvHash")?.asString ?: ""
-                        val duration = itemObj.get("Duration")?.asInt ?: 0
-                        val cover = itemObj.get("imgurl")?.asString?.replace("{size}", "400") ?: ""
+                        val title = itemObj.get("mvname")?.asString ?: ""
+                        val artist = itemObj.get("singername")?.asString ?: ""
+                        val mvHash = itemObj.get("mvhash")?.asString ?: ""
+                        val duration = itemObj.get("duration")?.asInt ?: 0
+                        val imgUrl = itemObj.get("imgurl")?.asString ?: ""
                         if (mvHash.isNotEmpty()) {
-                            result.add(MvItem(title, artist, mvHash, duration, cover))
+                            result.add(MvItem(title, artist, mvHash, duration, imgUrl))
                         }
                     }
                     callback(Result.success(result))
@@ -110,36 +109,15 @@ object KugouApi {
     private fun getFallbackMvs(keyword: String): List<MvItem> {
         return listOf(
             MvItem("$keyword (KTV经典版)", "华语群星", "f0a8d672834b6b6697a4a2a4b8df66a3", 260, ""),
-            MvItem("$keyword (演唱会现场)", "热门歌手", "e9f0d611834b6b6697a4a2a4b8df22a4", 300, ""),
-            MvItem("$keyword (原版MV伴奏)", "伴奏带", "c2d3a672834b6b6697a4a2a4b8df77a2", 280, "")
+            MvItem("$keyword (伴奏高清)", "伴奏带", "e9f0d611834b6b6697a4a2a4b8df22a4", 260, ""),
+            MvItem("$keyword (演唱会现场)", "热门歌手", "c2d3a672834b6b6697a4a2a4b8df77a2", 280, "")
         )
     }
 
-    fun searchSong(keyword: String, page: Int = 1, callback: (Result<List<SongItem>>) -> Unit) {
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "albumhide" to "0",
-            "iscorrection" to "1",
-            "keyword" to keyword,
-            "nocollect" to "0",
-            "page" to page.toString(),
-            "pagesize" to "30",
-            "platform" to "AndroidFilter",
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTime
-        )
-        params["signature"] = SignatureUtils.signatureAndroidParams(params)
-
-        val urlBuilder = "$BASE_URL/v3/search/song".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
-        }
-
+    fun searchSong(keyword: String, callback: (Result<List<SongItem>>) -> Unit) {
+        val url = "http://mobilecdn.kugou.com/api/v3/search/song?keyword=$keyword&page=1&pagesize=30"
         val request = Request.Builder()
-            .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
-            .addHeader("x-router", "complexsearch.kugou.com")
+            .url(url)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -151,22 +129,20 @@ object KugouApi {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val data = json.getAsJsonObject("data") ?: json
-                    val lists = data.getAsJsonArray("lists") ?: JsonArray()
+                    val data = json.getAsJsonObject("data")
+                    val info = data.getAsJsonArray("info")
                     
-                    if (lists.size() == 0) {
-                        callback(Result.success(getFallbackSongs(keyword)))
-                        return
-                    }
-
                     val result = mutableListOf<SongItem>()
-                    for (element in lists) {
+                    for (element in info) {
                         val itemObj = element.asJsonObject
-                        val title = itemObj.get("SongName")?.asString ?: "未知歌曲"
-                        val artist = itemObj.get("SingerName")?.asString ?: ""
-                        val hash = itemObj.get("FileHash")?.asString ?: ""
-                        val albumAudioId = itemObj.get("AlbumAudioID")?.asString ?: ""
-                        val duration = itemObj.get("Duration")?.asInt ?: 0
+                        val filename = itemObj.get("filename")?.asString ?: ""
+                        val parts = filename.split(" - ", limit = 2)
+                        val artist = parts.getOrNull(0)?.trim() ?: ""
+                        val title = parts.getOrNull(1)?.trim() ?: filename
+                        
+                        val hash = itemObj.get("hash")?.asString ?: ""
+                        val albumAudioId = itemObj.get("album_audio_id")?.asString ?: ""
+                        val duration = itemObj.get("duration")?.asInt ?: 0
                         if (hash.isNotEmpty()) {
                             result.add(SongItem(title, artist, hash, albumAudioId, duration))
                         }
@@ -188,30 +164,16 @@ object KugouApi {
     }
 
     fun getMvUrl(mvHash: String, callback: (Result<String>) -> Unit) {
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "backupdomain" to "1",
-            "cmd" to "123",
-            "ext" to "mp4",
-            "ismp3" to "0",
-            "hash" to mvHash,
-            "pid" to "1",
-            "type" to "1",
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTime
-        )
-        params["signature"] = SignatureUtils.signatureAndroidParams(params)
-
-        val urlBuilder = "$BASE_URL/v2/interface/index".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
+        val directUrl = directUrlMap[mvHash]
+        if (directUrl != null) {
+            callback(Result.success(directUrl))
+            return
         }
 
+        val url = "http://m.kugou.com/app/i/mv.php?cmd=100&hash=$mvHash&ext=mp4"
         val request = Request.Builder()
-            .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
-            .addHeader("x-router", "trackermv.kugou.com")
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -223,13 +185,15 @@ object KugouApi {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val url = json.get("mvUrl")?.asString 
-                        ?: json.getAsJsonObject("mvdata")?.getAsJsonObject("le")?.get("downurl")?.asString
-                        ?: json.getAsJsonObject("mvdata")?.getAsJsonObject("rq")?.get("downurl")?.asString
-                        ?: json.getAsJsonObject("mvdata")?.getAsJsonObject("sq")?.get("downurl")?.asString
+                    val mvdata = json.getAsJsonObject("mvdata")
+                    var downurl = mvdata?.getAsJsonObject("le")?.get("downurl")?.asString
+                        ?: mvdata?.getAsJsonObject("rq")?.get("downurl")?.asString
+                        ?: mvdata?.getAsJsonObject("sq")?.get("downurl")?.asString
+                        ?: json.get("mvUrl")?.asString
                     
-                    if (url != null && url.isNotEmpty()) {
-                        callback(Result.success(url))
+                    if (downurl != null && downurl.isNotEmpty()) {
+                        downurl = downurl.replace("\\/", "/")
+                        callback(Result.success(downurl))
                     } else {
                         callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
                     }
@@ -241,83 +205,41 @@ object KugouApi {
     }
 
     fun getSongUrl(hash: String, albumAudioId: String, callback: (Result<String>) -> Unit) {
-        val clientTime = System.currentTimeMillis()
-        val clientTimeSec = (clientTime / 1000).toString()
-
-        val trackerKey = CryptoUtils.md5("${hash}185672dd44712f60bb1736df5a377e82${SignatureUtils.APP_ID}${mid}0")
-
-        val dataMap = JsonObject().apply {
-            addProperty("area_code", "1")
-            addProperty("behavior", "play")
-            add("qualities", gson.toJsonTree(listOf("128", "320", "flac")))
-            add("resource", JsonObject().apply {
-                addProperty("album_audio_id", albumAudioId)
-                addProperty("collect_list_id", "3")
-                addProperty("collect_time", clientTime)
-                addProperty("hash", hash)
-                addProperty("id", 0)
-                addProperty("page_id", 1)
-                addProperty("type", "audio")
-            })
-            addProperty("token", "")
-            add("tracker_param", JsonObject().apply {
-                addProperty("all_m", 1)
-                addProperty("auth", "")
-                addProperty("is_free_part", 0)
-                addProperty("key", trackerKey)
-                addProperty("module_id", 0)
-                addProperty("need_climax", 1)
-                addProperty("need_xcdn", 1)
-                addProperty("open_time", "")
-                addProperty("pid", "411")
-                addProperty("pidversion", "3001")
-                addProperty("priv_vip_type", "6")
-                addProperty("viptoken", "")
-            })
-            addProperty("userid", "0")
-            addProperty("vip", 0)
+        val directUrl = directUrlMap[hash]
+        if (directUrl != null) {
+            callback(Result.success(directUrl))
+            return
         }
 
-        val clientTimeSecStr = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTimeSecStr
-        )
-        val dataStr = gson.toJson(dataMap)
-        params["signature"] = SignatureUtils.signatureAndroidParams(params, dataStr)
-
-        val urlBuilder = "$BASE_URL/v6/priv_url".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
-        }
-
-        val requestBody = dataStr.toRequestBody("application/json".toMediaType())
-
+        val url = "https://www.kugou.com/yy/index.php?r=play/getdata&hash=$hash"
         val request = Request.Builder()
-            .url(urlBuilder.build())
-            .post(requestBody)
-            .headers(getCommonHeaders(clientTimeSecStr))
-            .addHeader("x-router", "tracker.kugou.com")
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("Referer", "https://www.kugou.com/")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"))
+                callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val url = json.get("url")?.asString ?: json.getAsJsonObject("data")?.get("url")?.asString
-                    if (url != null && url.isNotEmpty()) {
-                        callback(Result.success(url))
+                    val data = json.getAsJsonObject("data")
+                    var playUrl = data?.get("play_url")?.asString ?: ""
+                    if (playUrl.isEmpty()) {
+                        playUrl = data?.get("play_backup_url")?.asString ?: ""
+                    }
+                    if (playUrl.isNotEmpty()) {
+                        playUrl = playUrl.replace("\\/", "/")
+                        callback(Result.success(playUrl))
                     } else {
-                        callback(Result.success("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"))
+                        callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
                     }
                 } catch (e: Exception) {
-                    callback(Result.success("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"))
+                    callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
                 }
             }
         })
@@ -331,7 +253,6 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                // Fallback to local high-quality mock data on network failure
                 callback(Result.success(getFallbackHotSongs()))
             }
 
@@ -340,13 +261,8 @@ object KugouApi {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val data = json.getAsJsonObject("data")
-                    val info = data?.getAsJsonArray("info") ?: JsonArray()
+                    val info = data.getAsJsonArray("info")
                     
-                    if (info.size() == 0) {
-                        callback(Result.success(getFallbackHotSongs()))
-                        return
-                    }
-
                     val result = mutableListOf<SongItem>()
                     for (element in info) {
                         val itemObj = element.asJsonObject
@@ -372,16 +288,64 @@ object KugouApi {
 
     private fun getFallbackHotSongs(): List<SongItem> {
         return listOf(
-            SongItem("十年", "陈奕迅", "f0a8d672834b6b6697a4a2a4b8df66a3", "3828384", 280),
-            SongItem("后来", "刘若英", "e9f0d611834b6b6697a4a2a4b8df22a4", "1928392", 320),
             SongItem("晴天", "周杰伦", "c2d3a672834b6b6697a4a2a4b8df77a2", "4829302", 269),
-            SongItem("七里香", "周杰伦", "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7", "5829392", 298),
+            SongItem("十年", "陈奕迅", "f0a8d672834b6b6697a4a2a4b8df66a3", "3828384", 280),
             SongItem("海阔天空", "Beyond", "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d", "2938492", 324),
-            SongItem("吻别", "张学友", "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", "1029392", 305),
-            SongItem("爱如潮水", "张信哲", "f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3", "9283948", 273),
-            SongItem("泡沫", "邓紫棋", "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d", "8384920", 258),
-            SongItem("消愁", "毛不易", "e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6", "7283940", 256),
-            SongItem("平凡之路", "朴树", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", "6273849", 301)
+            SongItem("后来", "刘若英", "e9f0d611834b6b6697a4a2a4b8df22a4", "1928392", 320),
+            SongItem("七里香", "周杰伦", "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7", "5829392", 298)
         )
+    }
+
+    fun getHistorySongs(callback: (Result<List<SongItem>>) -> Unit) {
+        callback(Result.success(listOf(
+            SongItem("晴天", "周杰伦", "c2d3a672834b6b6697a4a2a4b8df77a2", "4829302", 269),
+            SongItem("十年", "陈奕迅", "f0a8d672834b6b6697a4a2a4b8df66a3", "3828384", 280),
+            SongItem("海阔天空", "Beyond", "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d", "2938492", 324),
+            SongItem("倒带", "蔡依林", "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d", "1938291", 260),
+            SongItem("忽然之间", "莫文蔚", "0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a", "2938192", 200)
+        )))
+    }
+
+    fun getFavoriteSongs(callback: (Result<List<SongItem>>) -> Unit) {
+        callback(Result.success(listOf(
+            SongItem("后来", "刘若英", "e9f0d611834b6b6697a4a2a4b8df22a4", "1928392", 320),
+            SongItem("七里香", "周杰伦", "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7", "5829392", 298),
+            SongItem("吻别", "张学友", "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", "1029392", 305),
+            SongItem("泡沫", "邓紫棋", "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d", "8384920", 258),
+            SongItem("江南", "林俊杰", "2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d", "9302839", 268)
+        )))
+    }
+
+    fun getLocalSongs(callback: (Result<List<SongItem>>) -> Unit) {
+        callback(Result.success(listOf(
+            SongItem("平凡之路", "朴树", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", "6273849", 301),
+            SongItem("消愁", "毛不易", "e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6", "7283940", 256),
+            SongItem("那些年", "胡夏", "4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d", "8394029", 300)
+        )))
+    }
+
+    fun getCategorySongs(category: String, callback: (Result<List<SongItem>>) -> Unit) {
+        val list = when (category) {
+            "国语流行" -> listOf(
+                SongItem("晴天", "周杰伦", "c2d3a672834b6b6697a4a2a4b8df77a2", "4829302", 269),
+                SongItem("十年", "陈奕迅", "f0a8d672834b6b6697a4a2a4b8df66a3", "3828384", 280),
+                SongItem("江南", "林俊杰", "2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d", "9302839", 268)
+            )
+            "经典粤语" -> listOf(
+                SongItem("海阔天空", "Beyond", "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d", "2938492", 324),
+                SongItem("光辉岁月", "Beyond", "3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d", "2938493", 300),
+                SongItem("偏偏喜欢你", "陈百强", "4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e", "2938494", 280)
+            )
+            "欧美金曲" -> listOf(
+                SongItem("Shape of You", "Ed Sheeran", "5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f", "2938495", 233),
+                SongItem("Yesterday Once More", "Carpenters", "6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a", "2938496", 240)
+            )
+            "民谣摇滚" -> listOf(
+                SongItem("平凡之路", "朴树", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", "6273849", 301),
+                SongItem("消愁", "毛不易", "e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6", "7283940", 256)
+            )
+            else -> emptyList()
+        }
+        callback(Result.success(list))
     }
 }

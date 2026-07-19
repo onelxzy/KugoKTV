@@ -30,11 +30,20 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.media3.ui.PlayerView
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
@@ -43,6 +52,7 @@ import com.echo.ktv.playback.KtvPlayerManager
 import com.echo.ktv.playback.PlayableItem
 import com.echo.ktv.server.IpUtils
 import com.echo.ktv.server.QrCodeUtils
+import kotlinx.coroutines.delay
 
 // TV Theme Colors
 object KtvTheme {
@@ -80,11 +90,17 @@ fun TvFocusableItem(
 @Composable
 fun MainTvScreen() {
     val context = LocalContext.current
-    var currentTab by remember { mutableStateOf("home") } // home, search, queue, hot_songs
+    val focusManager = LocalFocusManager.current
+    val initialFocusRequester = remember { FocusRequester() }
+
+    var currentTab by remember { mutableStateOf("home") } // home, search, queue, songs_list, category
     var isPlayerFullscreen by remember { mutableStateOf(false) }
     var searchKeyword by remember { mutableStateOf("") }
     var searchMvs by remember { mutableStateOf<List<MvItem>>(emptyList()) }
     var hotSongs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var displaySongsList by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var listTitle by remember { mutableStateOf("") }
+    var currentCategoryName by remember { mutableStateOf("") }
     var showQrDialog by remember { mutableStateOf(false) }
 
     val playlist by KtvPlayerManager.playlist.collectAsState()
@@ -102,12 +118,19 @@ fun MainTvScreen() {
         KugouApi.getHotSongs { result ->
             result.onSuccess { hotSongs = it }
         }
+        // Force request initial focus on start
+        delay(300)
+        initialFocusRequester.requestFocus()
     }
 
     // Handle Back Press for TV navigation
     if (isPlayerFullscreen) {
         BackHandler {
             isPlayerFullscreen = false
+        }
+    } else if (currentTab == "category" && currentCategoryName.isNotEmpty()) {
+        BackHandler {
+            currentCategoryName = ""
         }
     } else if (currentTab != "home") {
         BackHandler {
@@ -128,6 +151,31 @@ fun MainTvScreen() {
                         colors = listOf(Color(0xFF160E36), Color(0xFF070A13))
                     )
                 )
+                .onKeyEvent { keyEvent ->
+                    if (keyEvent.type == KeyEventType.KeyDown) {
+                        when (keyEvent.key) {
+                            Key.DirectionLeft -> {
+                                focusManager.moveFocus(FocusDirection.Left)
+                                true
+                            }
+                            Key.DirectionRight -> {
+                                focusManager.moveFocus(FocusDirection.Right)
+                                true
+                            }
+                            Key.DirectionUp -> {
+                                focusManager.moveFocus(FocusDirection.Up)
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                focusManager.moveFocus(FocusDirection.Down)
+                                true
+                            }
+                            else -> false
+                        }
+                    } else {
+                        false
+                    }
+                }
                 .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -145,19 +193,20 @@ fun MainTvScreen() {
                     },
                     onQrClick = { showQrDialog = true },
                     isVocalEliminated = isVocalEliminated,
-                    isPlaying = isPlaying
+                    isPlaying = isPlaying,
+                    initialFocusRequester = initialFocusRequester
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (currentTab == "home") {
-                    // Home Dashboard layout - fully responsive using weight distribution!
+                    // Home Dashboard layout
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left Column (Player & Bottom 3 cards): takes 45% width
+                        // Left Column (Player & Bottom 3 cards): 45% width
                         Column(
                             modifier = Modifier
                                 .weight(0.45f)
@@ -180,7 +229,7 @@ fun MainTvScreen() {
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Bottom 3 cards Row: height is 80dp to ensure vertical fit
+                            // Bottom 3 cards Row
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -189,22 +238,38 @@ fun MainTvScreen() {
                             ) {
                                 GridCard(
                                     title = "常唱",
-                                    subtitle = "经典老歌/必点",
+                                    subtitle = "经典常唱老歌",
                                     emoji = "🎙",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF11998E), Color(0xFF38EF7D))
                                     ),
-                                    onClick = { currentTab = "hot_songs" },
+                                    onClick = {
+                                        KugouApi.getHistorySongs { result ->
+                                            result.onSuccess {
+                                                displaySongsList = it
+                                                listTitle = "🎙 经典常唱歌曲"
+                                                currentTab = "songs_list"
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 GridCard(
                                     title = "收藏",
-                                    subtitle = "专属个人列表",
+                                    subtitle = "我的专属列表",
                                     emoji = "❤️",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB))
                                     ),
-                                    onClick = { currentTab = "hot_songs" },
+                                    onClick = {
+                                        KugouApi.getFavoriteSongs { result ->
+                                            result.onSuccess {
+                                                displaySongsList = it
+                                                listTitle = "❤️ 我的收藏歌单"
+                                                currentTab = "songs_list"
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 GridCard(
@@ -214,7 +279,10 @@ fun MainTvScreen() {
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF00F2FE), Color(0xFF4FACFE))
                                     ),
-                                    onClick = { currentTab = "hot_songs" },
+                                    onClick = {
+                                        currentTab = "category"
+                                        currentCategoryName = ""
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -222,7 +290,7 @@ fun MainTvScreen() {
 
                         Spacer(modifier = Modifier.width(16.dp))
 
-                        // Center Grid Column (2x2 cards): takes 35% width
+                        // Center Grid Column (2x2 cards): 35% width
                         Column(
                             modifier = Modifier
                                 .weight(0.35f)
@@ -242,7 +310,11 @@ fun MainTvScreen() {
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
                                     ),
-                                    onClick = { currentTab = "hot_songs" },
+                                    onClick = {
+                                        displaySongsList = hotSongs
+                                        listTitle = "👑 排行榜热门推荐"
+                                        currentTab = "songs_list"
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 GridCard(
@@ -282,7 +354,15 @@ fun MainTvScreen() {
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF4A00E0), Color(0xFF8E2DE2))
                                     ),
-                                    onClick = { currentTab = "hot_songs" },
+                                    onClick = {
+                                        KugouApi.getLocalSongs { result ->
+                                            result.onSuccess {
+                                                displaySongsList = it
+                                                listTitle = "🪐 本地歌曲列表"
+                                                currentTab = "songs_list"
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -290,27 +370,48 @@ fun MainTvScreen() {
 
                         Spacer(modifier = Modifier.width(16.dp))
 
-                        // Right Area (Tall "新歌榜" card): takes 20% width
+                        // Right Area (Tall "新歌榜" card): 20% width
                         TallFeatureCard(
                             title = "新歌榜",
                             songs = hotSongs,
-                            onClick = { currentTab = "hot_songs" },
+                            onClick = {
+                                displaySongsList = hotSongs
+                                listTitle = "🔥 酷唱新歌榜"
+                                currentTab = "songs_list"
+                            },
                             modifier = Modifier
                                 .weight(0.2f)
                                 .fillMaxHeight()
                         )
                     }
                 } else {
-                    // Sub-screen (Search list, Queue list, or Hot songs list)
+                    // Sub-screens
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
                         when (currentTab) {
-                            "hot_songs" -> HotSongsGrid(hotSongs) { song ->
+                            "songs_list" -> SongsListGrid(listTitle, displaySongsList) { song ->
                                 KtvPlayerManager.addSongToQueue(song)
                                 Toast.makeText(context, "已点: ${song.title}", Toast.LENGTH_SHORT).show()
+                            }
+                            "category" -> {
+                                if (currentCategoryName.isNotEmpty()) {
+                                    SongsListGrid("💬 分类 - $currentCategoryName", displaySongsList) { song ->
+                                        KtvPlayerManager.addSongToQueue(song)
+                                        Toast.makeText(context, "已点: ${song.title}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    CategorySelectionGrid { category ->
+                                        currentCategoryName = category
+                                        KugouApi.getCategorySongs(category) { result ->
+                                            result.onSuccess {
+                                                displaySongsList = it
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             "search" -> SearchMvContent(
                                 keyword = searchKeyword,
@@ -355,6 +456,7 @@ fun TopBar(
     onQrClick: () -> Unit,
     isVocalEliminated: Boolean,
     isPlaying: Boolean,
+    initialFocusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -373,7 +475,10 @@ fun TopBar(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        TvFocusableItem(onClick = onSearchClick) {
+        TvFocusableItem(
+            onClick = onSearchClick,
+            modifier = Modifier.focusRequester(initialFocusRequester)
+        ) {
             Text("🔍 搜索", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
         }
         Spacer(modifier = Modifier.width(8.dp))
@@ -474,7 +579,7 @@ fun IntegratedPlayerWindow(
                         .fillMaxSize()
                         .background(
                             Brush.radialGradient(
-                                colors = listOf(Color(0xFF3F2B96), Color(0xFF0F0B26))
+                                colors = listOf(Color(0xFF2C1B4D), Color(0xFF070A13))
                             )
                         ),
                     contentAlignment = Alignment.Center
@@ -483,8 +588,8 @@ fun IntegratedPlayerWindow(
                         Box(
                             modifier = Modifier
                                 .size(70.dp)
-                                .background(Color(0xFFE100FF).copy(alpha = 0.2f), CircleShape)
-                                .border(2.dp, Color(0xFFE100FF), CircleShape),
+                                .background(Color(0xFF00E5FF).copy(alpha = 0.1f), CircleShape)
+                                .border(2.dp, Color(0xFF00E5FF), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text("👤", fontSize = 32.sp)
@@ -666,32 +771,88 @@ fun QrCodeDialog(
 }
 
 @Composable
-fun HotSongsGrid(songs: List<SongItem>, onSelect: (SongItem) -> Unit) {
+fun SongsListGrid(title: String, songs: List<SongItem>, onSelect: (SongItem) -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Text("🔥 推荐热歌点播", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, modifier = Modifier.padding(bottom = 16.dp))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(songs) { song ->
-                TvFocusableItem(
-                    onClick = { onSelect(song) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(KtvTheme.CardBg)
-                            .padding(16.dp)
+        Text(
+            text = title,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = KtvTheme.TextMain,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        if (songs.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("暂无歌曲数据", color = KtvTheme.TextMuted)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(songs) { song ->
+                    TvFocusableItem(
+                        onClick = { onSelect(song) },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(song.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(song.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(KtvTheme.CardBg)
+                                .padding(16.dp)
+                        ) {
+                            Text(song.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(song.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun CategorySelectionGrid(onSelect: (String) -> Unit) {
+    val categories = listOf("国语流行", "经典粤语", "欧美金曲", "民谣摇滚")
+    val gradients = listOf(
+        Brush.horizontalGradient(colors = listOf(Color(0xFFFF8C00), Color(0xFFFF0080))),
+        Brush.horizontalGradient(colors = listOf(Color(0xFF00C6FF), Color(0xFF0072FF))),
+        Brush.horizontalGradient(colors = listOf(Color(0xFF7F00FF), Color(0xFFE100FF))),
+        Brush.horizontalGradient(colors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)))
+    )
+    val emojis = listOf("🎵", "🎙", "🌍", "🎸")
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("💬 选择歌曲分类", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, modifier = Modifier.padding(bottom = 16.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(categories.size) { index ->
+                val name = categories[index]
+                TvFocusableItem(
+                    onClick = { onSelect(name) },
+                    modifier = Modifier.fillMaxWidth().height(140.dp)
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(gradients[index])
+                            .padding(20.dp)
+                    ) {
+                        Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.CenterStart))
+                        Text(emojis[index], fontSize = 50.sp, modifier = Modifier.align(Alignment.CenterEnd).scale(if (isFocused) 1.2f else 1.0f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HotSongsGrid(songs: List<SongItem>, onSelect: (SongItem) -> Unit) {
+    SongsListGrid("🔥 推荐热歌点播", songs, onSelect)
 }
 
 @Composable
@@ -788,9 +949,32 @@ fun PlaylistQueueContent(list: List<PlayableItem>) {
 fun VideoPlayerOverlay(item: PlayableItem) {
     val isVocalEliminated by KtvPlayerManager.isVocalEliminated.collectAsState()
     val musicVolume by KtvPlayerManager.musicVolume.collectAsState()
+    val isPlaying by KtvPlayerManager.isPlaying.collectAsState()
+
+    val player = KtvPlayerManager.getPlayer()
+    var currentPosition by remember { mutableStateOf(0L) }
+    var duration by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(player, isPlaying) {
+        while (true) {
+            if (player != null) {
+                currentPosition = player.currentPosition
+                duration = player.duration.coerceAtLeast(0L)
+            }
+            delay(500)
+        }
+    }
+
+    val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
+    val timeString = remember(currentPosition, duration) {
+        val curSec = (currentPosition / 1000) % 60
+        val curMin = (currentPosition / 1000) / 60
+        val durSec = (duration / 1000) % 60
+        val durMin = (duration / 1000) / 60
+        String.format("%02d:%02d / %02d:%02d", curMin, curSec, durMin, durSec)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        val player = KtvPlayerManager.getPlayer()
         if (player != null) {
             AndroidView(
                 factory = { ctx ->
@@ -807,28 +991,42 @@ fun VideoPlayerOverlay(item: PlayableItem) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF05050A)),
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0xFF2C1B4D), Color(0xFF070A13))
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .background(Color(0xFF00E5FF).copy(alpha = 0.1f), CircleShape)
+                            .border(3.dp, Color(0xFF00E5FF), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎵", fontSize = 64.sp)
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
                     Text(
                         text = "正在伴奏播放...",
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = KtvTheme.Accent
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = item.title,
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     Text(
                         text = item.artist,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         color = KtvTheme.TextMuted,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
@@ -841,38 +1039,64 @@ fun VideoPlayerOverlay(item: PlayableItem) {
                 .background(Color(0xCC070A13))
                 .padding(20.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(item.artist, fontSize = 16.sp, color = KtvTheme.TextMuted, modifier = Modifier.padding(top = 4.dp))
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TvFocusableItem(onClick = { KtvPlayerManager.togglePlayPause() }) {
-                        Text("播放/暂停", color = Color.White, modifier = Modifier.padding(12.dp))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TvFocusableItem(onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }) {
-                        Text(
-                            text = if (isVocalEliminated) "🎙 伴奏模式" else "🎤 原唱模式",
-                            color = if (isVocalEliminated) KtvTheme.Accent else Color.White,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TvFocusableItem(onClick = { KtvPlayerManager.skipCurrent() }) {
-                        Text("切歌 ⏭", color = Color.White, modifier = Modifier.padding(12.dp))
-                    }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Progress Bar and Time
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LinearProgressIndicator(
+                        progress = progress,
+                        color = KtvTheme.Accent,
+                        trackColor = Color.Gray.copy(alpha = 0.3f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(6.dp)
+                            .clip(CircleShape)
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
-                        text = "伴奏音量: ${(musicVolume * 100).toInt()}%",
-                        fontSize = 16.sp,
-                        color = Color.White
+                        text = timeString,
+                        color = Color.White,
+                        fontSize = 14.sp
                     )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(item.artist, fontSize = 16.sp, color = KtvTheme.TextMuted, modifier = Modifier.padding(top = 4.dp))
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TvFocusableItem(onClick = { KtvPlayerManager.togglePlayPause() }) {
+                            Text(if (isPlaying) "暂停 ⏸" else "播放 ▶", color = Color.White, modifier = Modifier.padding(12.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TvFocusableItem(onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }) {
+                            Text(
+                                text = if (isVocalEliminated) "🎙 伴奏模式" else "🎤 原唱模式",
+                                color = if (isVocalEliminated) KtvTheme.Accent else Color.White,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TvFocusableItem(onClick = { KtvPlayerManager.skipCurrent() }) {
+                            Text("切歌 ⏭", color = Color.White, modifier = Modifier.padding(12.dp))
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "伴奏音量: ${(musicVolume * 100).toInt()}%",
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
