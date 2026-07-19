@@ -64,7 +64,8 @@ object KtvPlayerManager {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean
+                enableAudioTrackPlaybackParams: Boolean,
+                enableOffload: Boolean
             ): AudioSink? {
                 return DefaultAudioSink.Builder(context)
                     .setAudioProcessors(arrayOf(vocalEliminator))

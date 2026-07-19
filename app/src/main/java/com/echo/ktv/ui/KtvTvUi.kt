@@ -253,10 +253,9 @@ fun SearchMvContent(
                 onValueChange = onKeywordChange,
                 placeholder = { Text("输入歌手/歌名拼音搜索...") },
                 colors = TextFieldDefaults.textFieldColors(
-                    focusedContainerColor = KtvTheme.CardBg,
-                    unfocusedContainerColor = KtvTheme.CardBg,
-                    focusedTextColor = KtvTheme.TextMain,
-                    unfocusedTextColor = KtvTheme.TextMain
+                    containerColor = KtvTheme.CardBg,
+                    textColor = KtvTheme.TextMain,
+                    cursorColor = KtvTheme.Accent
                 ),
                 modifier = Modifier
                     .weight(1.0f)
