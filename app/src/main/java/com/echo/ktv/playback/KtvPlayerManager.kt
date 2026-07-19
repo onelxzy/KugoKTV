@@ -7,7 +7,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.audio.DefaultAudioProcessorChain
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.SongItem
@@ -59,21 +60,31 @@ object KtvPlayerManager {
     fun initialize(context: Context) {
         if (player != null) return
 
-        val renderersFactory = DefaultRenderersFactory(context.applicationContext)
-            .setAudioProcessorChain(
-                DefaultAudioProcessorChain(vocalEliminator as AudioProcessor)
-            )
-
-        player = ExoPlayer.Builder(context.applicationContext, renderersFactory).build().apply {
-            repeatMode = Player.REPEAT_MODE_OFF
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_ENDED) {
-                        playNext()
-                    }
-                }
-            })
+        val renderersFactory = object : DefaultRenderersFactory(context.applicationContext) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink? {
+                return DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(vocalEliminator))
+                    .build()
+            }
         }
+
+        player = ExoPlayer.Builder(context.applicationContext)
+            .setRenderersFactory(renderersFactory)
+            .build()
+            .apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) {
+                            playNext()
+                        }
+                    }
+                })
+            }
     }
 
     fun getPlayer(): ExoPlayer? = player

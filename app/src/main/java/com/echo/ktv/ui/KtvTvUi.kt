@@ -247,11 +247,12 @@ fun SearchMvContent(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 20.dp)
         ) {
+            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
             TextField(
                 value = keyword,
                 onValueChange = onKeywordChange,
                 placeholder = { Text("输入歌手/歌名拼音搜索...") },
-                colors = TextFieldDefaults.colors(
+                colors = TextFieldDefaults.textFieldColors(
                     focusedContainerColor = KtvTheme.CardBg,
                     unfocusedContainerColor = KtvTheme.CardBg,
                     focusedTextColor = KtvTheme.TextMain,

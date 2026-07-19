@@ -297,7 +297,7 @@ object MobileWebStatic {
             container.innerHTML = '<div style="text-align: center; color: var(--text-muted); margin-top: 40px;">正在检索中...</div>';
 
             try {
-                const response = await fetch(`/api/search?q=${encodeURIComponent(input)}&type=${currentTab}`);
+                const response = await fetch(`/api/search?q=${'$'}{encodeURIComponent(input)}&type=${'$'}{currentTab}`);
                 const data = await response.json();
                 
                 if (data.length === 0) {
@@ -311,8 +311,8 @@ object MobileWebStatic {
                     card.className = 'song-card';
                     card.innerHTML = `
                         <div class="song-info">
-                            <div class="song-title">${item.title}</div>
-                            <div class="song-artist">${item.artist}</div>
+                            <div class="song-title">${'$'}{item.title}</div>
+                            <div class="song-artist">${'$'}{item.artist}</div>
                         </div>
                         <button class="btn-add">点歌</button>
                     `;
@@ -363,8 +363,8 @@ object MobileWebStatic {
                     card.className = 'song-card';
                     card.innerHTML = `
                         <div class="song-info">
-                            <div class="song-title">${index + 1}. ${item.title}</div>
-                            <div class="song-artist">${item.artist}</div>
+                            <div class="song-title">${'$'}{index + 1}. ${'$'}{item.title}</div>
+                            <div class="song-artist">${'$'}{item.artist}</div>
                         </div>
                     `;
                     container.appendChild(card);

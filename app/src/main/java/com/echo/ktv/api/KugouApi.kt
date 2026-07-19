@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
@@ -58,7 +59,7 @@ object KugouApi {
         )
         params["signature"] = SignatureUtils.signatureAndroidParams(params)
 
-        val urlBuilder = HttpUrl.parse("$BASE_URL/v1/search/mv")!!.newBuilder()
+        val urlBuilder = "$BASE_URL/v1/search/mv".toHttpUrl().newBuilder()
         for ((key, value) in params) {
             urlBuilder.addQueryParameter(key, value)
         }
@@ -116,7 +117,7 @@ object KugouApi {
         )
         params["signature"] = SignatureUtils.signatureAndroidParams(params)
 
-        val urlBuilder = HttpUrl.parse("$BASE_URL/v3/search/song")!!.newBuilder()
+        val urlBuilder = "$BASE_URL/v3/search/song".toHttpUrl().newBuilder()
         for ((key, value) in params) {
             urlBuilder.addQueryParameter(key, value)
         }
@@ -174,7 +175,7 @@ object KugouApi {
         )
         params["signature"] = SignatureUtils.signatureAndroidParams(params)
 
-        val urlBuilder = HttpUrl.parse("$BASE_URL/v2/interface/index")!!.newBuilder()
+        val urlBuilder = "$BASE_URL/v2/interface/index".toHttpUrl().newBuilder()
         for ((key, value) in params) {
             urlBuilder.addQueryParameter(key, value)
         }
@@ -259,7 +260,7 @@ object KugouApi {
         val dataStr = gson.toJson(dataMap)
         params["signature"] = SignatureUtils.signatureAndroidParams(params, dataStr)
 
-        val urlBuilder = HttpUrl.parse("$BASE_URL/v6/priv_url")!!.newBuilder()
+        val urlBuilder = "$BASE_URL/v6/priv_url".toHttpUrl().newBuilder()
         for ((key, value) in params) {
             urlBuilder.addQueryParameter(key, value)
         }
@@ -313,7 +314,7 @@ object KugouApi {
         )
         params["signature"] = SignatureUtils.signatureAndroidParams(params, dataStr)
 
-        val urlBuilder = HttpUrl.parse("$BASE_URL/musicadservice/container/v1/newsong_publish")!!.newBuilder()
+        val urlBuilder = "$BASE_URL/musicadservice/container/v1/newsong_publish".toHttpUrl().newBuilder()
         for ((key, value) in params) {
             urlBuilder.addQueryParameter(key, value)
         }
