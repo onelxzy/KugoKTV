@@ -185,49 +185,61 @@ object KtvPlayerManager {
     }
 
     private fun startPlayback(url: String) {
-        player?.let { p ->
-            p.stop()
-            p.clearMediaItems()
-            val mediaItem = MediaItem.fromUri(url)
-            p.setMediaItem(mediaItem)
-            p.volume = _musicVolume.value
-            p.prepare()
-            p.play()
-            // Reset vocal elimination state on new track
-            setVocalElimination(_isVocalEliminated.value)
+        scope.launch(Dispatchers.Main) {
+            player?.let { p ->
+                p.stop()
+                p.clearMediaItems()
+                val mediaItem = MediaItem.fromUri(url)
+                p.setMediaItem(mediaItem)
+                p.volume = _musicVolume.value
+                p.prepare()
+                p.play()
+                // Reset vocal elimination state on new track
+                setVocalElimination(_isVocalEliminated.value)
+            }
         }
     }
 
     fun togglePlayPause() {
-        player?.let { p ->
-            if (p.isPlaying) p.pause() else p.play()
+        scope.launch(Dispatchers.Main) {
+            player?.let { p ->
+                if (p.isPlaying) p.pause() else p.play()
+            }
         }
     }
 
     fun setVocalElimination(enabled: Boolean) {
-        _isVocalEliminated.value = enabled
-        vocalEliminator.setEliminateVocal(enabled)
-        // Force ExoPlayer to reload renderers/processors configuration
-        player?.let { p ->
-            if (p.playbackState != Player.STATE_IDLE) {
-                val parameters = p.playbackParameters
-                p.playbackParameters = parameters
+        scope.launch(Dispatchers.Main) {
+            _isVocalEliminated.value = enabled
+            vocalEliminator.setEliminateVocal(enabled)
+            // Force ExoPlayer to reload renderers/processors configuration
+            player?.let { p ->
+                if (p.playbackState != Player.STATE_IDLE) {
+                    val parameters = p.playbackParameters
+                    p.playbackParameters = parameters
+                }
             }
         }
     }
 
     fun setVolume(vol: Float) {
-        val coerced = vol.coerceIn(0.0f, 1.0f)
-        _musicVolume.value = coerced
-        player?.volume = coerced
+        scope.launch(Dispatchers.Main) {
+            val coerced = vol.coerceIn(0.0f, 1.0f)
+            _musicVolume.value = coerced
+            player?.volume = coerced
+        }
     }
 
     fun skipCurrent() {
-        playNext()
+        scope.launch(Dispatchers.Main) {
+            playNext()
+        }
     }
 
     fun release() {
-        player?.release()
-        player = null
+        scope.launch(Dispatchers.Main) {
+            player?.release()
+            player = null
+        }
     }
 }

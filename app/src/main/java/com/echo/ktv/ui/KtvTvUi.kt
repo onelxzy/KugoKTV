@@ -60,7 +60,7 @@ fun TvFocusableItem(
     content: @Composable BoxScope.(isFocused: Boolean) -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (isFocused) 1.05f else 1.0f)
+    val scale by animateFloatAsState(if (isFocused) 1.04f else 1.0f)
     val borderStroke = if (isFocused) BorderStroke(3.dp, KtvTheme.Accent) else BorderStroke(1.dp, Color.Transparent)
 
     Box(
@@ -128,7 +128,7 @@ fun MainTvScreen() {
                         colors = listOf(Color(0xFF160E36), Color(0xFF070A13))
                     )
                 )
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top Action Bar
@@ -151,16 +151,16 @@ fun MainTvScreen() {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (currentTab == "home") {
-                    // Home Dashboard layout (matches screenshot!)
+                    // Home Dashboard layout - fully responsive using weight distribution!
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left Column (Player & Bottom 3 cards)
+                        // Left Column (Player & Bottom 3 cards): takes 45% width
                         Column(
                             modifier = Modifier
-                                .width(480.dp)
+                                .weight(0.45f)
                                 .fillMaxHeight(),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -172,17 +172,20 @@ fun MainTvScreen() {
                                     } else {
                                         Toast.makeText(context, "请先点歌开始播放", Toast.LENGTH_SHORT).show()
                                     }
-                                }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
                             )
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            // Bottom 3 cards Row
+                            // Bottom 3 cards Row: height is 80dp to ensure vertical fit
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(110.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    .height(80.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 GridCard(
                                     title = "常唱",
@@ -196,7 +199,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "收藏",
-                                    subtitle = "我的专属歌单",
+                                    subtitle = "专属个人列表",
                                     emoji = "❤️",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB))
@@ -217,12 +220,12 @@ fun MainTvScreen() {
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(18.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
 
-                        // Center Grid Column (2x2 cards)
+                        // Center Grid Column (2x2 cards): takes 35% width
                         Column(
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(0.35f)
                                 .fillMaxHeight(),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -230,7 +233,7 @@ fun MainTvScreen() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 GridCard(
                                     title = "排行榜",
@@ -244,7 +247,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "歌名",
-                                    subtitle = "按歌名首字母拼音",
+                                    subtitle = "首字母拼音点歌",
                                     emoji = "📢",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF7F00FF), Color(0xFFE100FF))
@@ -254,17 +257,17 @@ fun MainTvScreen() {
                                 )
                             }
                             
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 GridCard(
                                     title = "歌星",
-                                    subtitle = "男歌手/女歌手/乐队",
+                                    subtitle = "歌手/乐队组合",
                                     emoji = "⭐",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFF8C00), Color(0xFFFF0080))
@@ -274,7 +277,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "本地",
-                                    subtitle = "本地歌曲库列表",
+                                    subtitle = "已下载歌曲库",
                                     emoji = "🪐",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF4A00E0), Color(0xFF8E2DE2))
@@ -285,13 +288,16 @@ fun MainTvScreen() {
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(18.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
 
-                        // Right Area (Tall "新歌榜" card)
+                        // Right Area (Tall "新歌榜" card): takes 20% width
                         TallFeatureCard(
                             title = "新歌榜",
                             songs = hotSongs,
-                            onClick = { currentTab = "hot_songs" }
+                            onClick = { currentTab = "hot_songs" },
+                            modifier = Modifier
+                                .weight(0.2f)
+                                .fillMaxHeight()
                         )
                     }
                 } else {
@@ -358,7 +364,7 @@ fun TopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "金调 KTV 🎙",
+            text = "酷唱 KTV 🎙",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             color = KtvTheme.Accent,
@@ -420,8 +426,6 @@ fun IntegratedPlayerWindow(
     TvFocusableItem(
         onClick = onClick,
         modifier = modifier
-            .width(480.dp)
-            .height(270.dp)
     ) { isFocused ->
         Box(
             modifier = Modifier
@@ -518,33 +522,36 @@ fun GridCard(
 ) {
     TvFocusableItem(
         onClick = onClick,
-        modifier = modifier.height(110.dp)
+        modifier = modifier.fillMaxHeight()
     ) { isFocused ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(gradient)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column(
                 modifier = Modifier.align(Alignment.CenterStart)
             ) {
                 Text(
                     text = title,
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f)
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Text(
                 text = emoji,
-                fontSize = 40.sp,
+                fontSize = 32.sp,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .scale(if (isFocused) 1.2f else 1.0f)
@@ -563,8 +570,6 @@ fun TallFeatureCard(
     TvFocusableItem(
         onClick = onClick,
         modifier = modifier
-            .width(220.dp)
-            .fillMaxHeight()
     ) { isFocused ->
         Box(
             modifier = Modifier
