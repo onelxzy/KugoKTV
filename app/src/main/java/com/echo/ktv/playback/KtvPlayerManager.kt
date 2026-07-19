@@ -55,6 +55,10 @@ object KtvPlayerManager {
     private val _musicVolume = MutableStateFlow(1.0f)
     val musicVolume: StateFlow<Float> = _musicVolume
 
+    // Playback state
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying
+
     private val scope = CoroutineScope(Dispatchers.Main)
 
     fun initialize(context: Context) {
@@ -83,6 +87,10 @@ object KtvPlayerManager {
                         if (state == Player.STATE_ENDED) {
                             playNext()
                         }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _isPlaying.value = isPlaying
                     }
                 })
             }
