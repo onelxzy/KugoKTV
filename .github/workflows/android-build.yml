@@ -31,18 +31,30 @@ jobs:
 
     - name: Sign Android Release APK
       run: |
-        if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
-          echo "SIGNING_KEY is not configured. Skipping signing step."
-          exit 0
-        fi
-        echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
         # Find the pre-installed apksigner in Android SDK
         APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
         # Find the built unsigned APK
         UNSIGNED_APK=$(find ./app/build/outputs/apk/release -name "*-unsigned.apk" | head -n 1)
+        
+        if [ -n "${{ secrets.SIGNING_KEY }}" ]; then
+          echo "Using configured GitHub Secrets for signing..."
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
+          KEY_ALIAS="${{ secrets.ALIAS }}"
+          STORE_PASS="${{ secrets.KEY_STORE_PASSWORD }}"
+          KEY_PASS="${{ secrets.KEY_PASSWORD }}"
+        else
+          echo "No secrets configured. Generating a self-signed release keystore on the fly..."
+          keytool -genkey -v -keystore release.jks -alias ktv -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Echo KTV, OU=Echo, O=Echo, L=BJ, S=BJ, C=CN" -storepass 123456 -keypass 123456
+          KEY_ALIAS="ktv"
+          STORE_PASS="123456"
+          KEY_PASS="123456"
+        fi
+        
         if [ -f "$UNSIGNED_APK" ]; then
-          $APKSIGNER sign --ks release.jks --ks-key-alias "${{ secrets.ALIAS }}" --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" --key-pass pass:"${{ secrets.KEY_PASSWORD }}" --out ./app/build/outputs/apk/release/KugoKTV-release-signed.apk "$UNSIGNED_APK"
+          $APKSIGNER sign --ks release.jks --ks-key-alias "$KEY_ALIAS" --ks-pass pass:"$STORE_PASS" --key-pass pass:"$KEY_PASS" --out ./app/build/outputs/apk/release/KugoKTV-release-signed.apk "$UNSIGNED_APK"
           echo "Signed APK successfully created: ./app/build/outputs/apk/release/KugoKTV-release-signed.apk"
+          # Delete the unsigned APK so the output zip only contains the signed one
+          rm "$UNSIGNED_APK"
         else
           echo "No unsigned APK found to sign."
         fi
