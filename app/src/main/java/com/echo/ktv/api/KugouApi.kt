@@ -35,6 +35,7 @@ object KugouApi {
         .build()
     private val gson = Gson()
     private const val mid = "2882303761517560020"
+    private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
     private const val BASE_URL = "https://gateway.kugou.com"
 
     // Real NetEase Direct Audio URL Mapping for mock songs
@@ -60,13 +61,17 @@ object KugouApi {
 
     private fun getCommonHeaders(clientTime: String): Headers {
         return Headers.Builder()
-            .add("DF", "0")
-            .add("Mid", mid)
-            .add("Uuid", "0")
+            .add("dfid", dfid)
+            .add("mid", mid)
             .add("clienttime", clientTime)
-            .add("clientver", SignatureUtils.CLIENT_VER)
-            .add("appid", SignatureUtils.APP_ID)
+            .add("clientver", "11430")
+            .add("appid", "1005")
+            .add("kg-rc", "1")
+            .add("kg-thash", "5d816a0")
+            .add("kg-rec", "1")
+            .add("kg-rf", "B9EDA08A64250DEFFBCADDEE00F8F25F")
             .add("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .add("Cookie", "dfid=$dfid; mid=$mid")
             .build()
     }
 
@@ -395,7 +400,7 @@ object KugouApi {
                     list.add(SongItem(title, artist, path, "local", duration))
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: java.lang.Exception) {
             e.printStackTrace()
         }
         return list

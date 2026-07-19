@@ -20,6 +20,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 sealed class PlayableItem {
     data class Mv(val mvItem: MvItem) : PlayableItem()
@@ -43,6 +51,10 @@ object KtvPlayerManager {
     private val vocalEliminator = KtvVocalEliminator()
     private var sharedPreferences: SharedPreferences? = null
     private val gson = Gson()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     // Playlist Queue
     private val _playlist = MutableStateFlow<List<PlayableItem>>(emptyList())
@@ -64,12 +76,15 @@ object KtvPlayerManager {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
 
-    // History and Favorites
+    // History, Favorites and Local Cached songs
     private val _history = MutableStateFlow<List<SongItem>>(emptyList())
     val history: StateFlow<List<SongItem>> = _history
 
     private val _favorites = MutableStateFlow<List<SongItem>>(emptyList())
     val favorites: StateFlow<List<SongItem>> = _favorites
+
+    private val _localSongs = MutableStateFlow<List<SongItem>>(emptyList())
+    val localSongs: StateFlow<List<SongItem>> = _localSongs
 
     private val scope = CoroutineScope(Dispatchers.Main)
 
@@ -113,6 +128,16 @@ object KtvPlayerManager {
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _isPlaying.value = isPlaying
+                    }
+
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        error.printStackTrace()
+                        val current = _currentPlaying.value
+                        if (current is PlayableItem.Mv) {
+                            fallbackToAudioSearch(current.title)
+                        } else {
+                            playNext()
+                        }
                     }
                 })
             }
@@ -167,25 +192,31 @@ object KtvPlayerManager {
         }
         addToHistory(songItem)
 
-        scope.launch {
-            when (nextItem) {
-                is PlayableItem.Mv -> {
-                    KugouApi.getMvUrl(nextItem.mvItem.mvHash) { result ->
-                        result.onSuccess { url ->
-                            startPlayback(url)
-                        }
-                        result.onFailure {
-                            fallbackToAudioSearch(nextItem.title)
+        // Check cache first
+        checkCacheAndPlay(songItem) {
+            // Not cached, fetch from network
+            scope.launch {
+                when (nextItem) {
+                    is PlayableItem.Mv -> {
+                        KugouApi.getMvUrl(nextItem.mvItem.mvHash) { result ->
+                            result.onSuccess { url ->
+                                startPlayback(url)
+                                downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
+                            }
+                            result.onFailure {
+                                fallbackToAudioSearch(nextItem.title)
+                            }
                         }
                     }
-                }
-                is PlayableItem.Song -> {
-                    KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
-                        result.onSuccess { url ->
-                            startPlayback(url)
-                        }
-                        result.onFailure {
-                            playNext() // Skip on failure
+                    is PlayableItem.Song -> {
+                        KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
+                            result.onSuccess { url ->
+                                startPlayback(url)
+                                downloadAndCache(nextItem.songItem.hash, url, songItem)
+                            }
+                            result.onFailure {
+                                playNext() // Skip on failure
+                            }
                         }
                     }
                 }
@@ -201,6 +232,7 @@ object KtvPlayerManager {
                     KugouApi.getSongUrl(firstSong.hash, firstSong.albumAudioId) { urlResult ->
                         urlResult.onSuccess { url ->
                             startPlayback(url)
+                            downloadAndCache(firstSong.hash, url, firstSong)
                         }
                         urlResult.onFailure {
                             playNext()
@@ -211,6 +243,54 @@ object KtvPlayerManager {
                 }
             }
             result.onFailure { playNext() }
+        }
+    }
+
+    private fun checkCacheAndPlay(song: SongItem, onUrlNeeded: () -> Unit) {
+        val context = player?.applicationContext ?: return onUrlNeeded()
+        val cacheDir = File(context.filesDir, "ktv_cache")
+        val cacheFileMp4 = File(cacheDir, "${song.hash.lowercase()}.mp4")
+        val cacheFileMp3 = File(cacheDir, "${song.hash.lowercase()}.mp3")
+
+        if (cacheFileMp4.exists()) {
+            startPlayback("file:///" + cacheFileMp4.absolutePath)
+        } else if (cacheFileMp3.exists()) {
+            startPlayback("file:///" + cacheFileMp3.absolutePath)
+        } else {
+            onUrlNeeded()
+        }
+    }
+
+    private fun downloadAndCache(hash: String, url: String, song: SongItem) {
+        if (url.startsWith("file://") || url.isEmpty()) return
+        val context = player?.applicationContext ?: return
+        
+        scope.launch(Dispatchers.IO) {
+            try {
+                val cacheDir = File(context.filesDir, "ktv_cache")
+                if (!cacheDir.exists()) cacheDir.mkdirs()
+
+                val isMv = url.contains(".mp4") || url.contains("mv") || song.albumAudioId == "mv"
+                val ext = if (isMv) "mp4" else "mp3"
+                val cacheFile = File(cacheDir, "${hash.lowercase()}.$ext")
+
+                if (cacheFile.exists()) return@launch
+
+                val request = Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    response.body?.use { body ->
+                        cacheFile.outputStream().use { out ->
+                            body.byteStream().copyTo(out)
+                        }
+                        launch(Dispatchers.Main) {
+                            addToLocalSongs(song)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -286,6 +366,11 @@ object KtvPlayerManager {
                 val listType = object : TypeToken<List<SongItem>>() {}.type
                 _favorites.value = gson.fromJson(favoritesJson, listType)
             }
+            val localJson = prefs.getString("local_songs", null)
+            if (localJson != null) {
+                val listType = object : TypeToken<List<SongItem>>() {}.type
+                _localSongs.value = gson.fromJson(localJson, listType)
+            }
         }
     }
 
@@ -293,7 +378,6 @@ object KtvPlayerManager {
         val list = _history.value.toMutableList()
         list.remove(song)
         list.add(0, song)
-        // Keep history size reasonable, e.g. 50 songs
         if (list.size > 50) {
             list.removeAt(list.size - 1)
         }
@@ -310,6 +394,15 @@ object KtvPlayerManager {
         }
         _favorites.value = list
         saveList("favorites", list)
+    }
+
+    private fun addToLocalSongs(song: SongItem) {
+        val list = _localSongs.value.toMutableList()
+        if (!list.contains(song)) {
+            list.add(song)
+            _localSongs.value = list
+            saveList("local_songs", list)
+        }
     }
 
     private fun saveList(key: String, list: List<SongItem>) {
