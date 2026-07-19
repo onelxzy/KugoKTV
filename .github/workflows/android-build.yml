@@ -38,14 +38,20 @@ jobs:
     # Optional: Sign the Release APK if secrets are configured.
     # Otherwise, it falls back to the unsigned release APK.
     - name: Sign Android Release APK
-      id: sign_app
-      uses: r0adrunner/sign-android-release@v1.0.4
-      with:
-        releaseDirectory: ./KugoKTV/app/build/outputs/apk/release
-        signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-        alias: ${{ secrets.ALIAS }}
-        keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-        keyPassword: ${{ secrets.KEY_PASSWORD }}
+      if: ${{ secrets.SIGNING_KEY != '' }}
+      run: |
+        echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
+        # Find the pre-installed apksigner in Android SDK
+        APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+        # Find the built unsigned APK
+        UNSIGNED_APK=$(find ./app/build/outputs/apk/release -name "*-unsigned.apk" | head -n 1)
+        if [ -f "$UNSIGNED_APK" ]; then
+          $APKSIGNER sign --ks release.jks --ks-key-alias "${{ secrets.ALIAS }}" --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" --key-pass pass:"${{ secrets.KEY_PASSWORD }}" --out ./app/build/outputs/apk/release/KugoKTV-release-signed.apk "$UNSIGNED_APK"
+          echo "Signed APK successfully created: ./app/build/outputs/apk/release/KugoKTV-release-signed.apk"
+        else
+          echo "No unsigned APK found to sign."
+        fi
+      working-directory: ./KugoKTV
       continue-on-error: true
 
     - name: Upload Unsigned / Signed APK Artifact
