@@ -35,11 +35,12 @@ jobs:
       run: gradle assembleRelease
       working-directory: ./KugoKTV
 
-    # Optional: Sign the Release APK if secrets are configured.
-    # Otherwise, it falls back to the unsigned release APK.
     - name: Sign Android Release APK
-      if: ${{ secrets.SIGNING_KEY != '' }}
       run: |
+        if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
+          echo "SIGNING_KEY is not configured. Skipping signing step."
+          exit 0
+        fi
         echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
         # Find the pre-installed apksigner in Android SDK
         APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
