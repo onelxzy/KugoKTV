@@ -48,6 +48,7 @@ sealed class PlayableItem {
 
 object KtvPlayerManager {
     private var player: ExoPlayer? = null
+    private var appContext: Context? = null
     private val vocalEliminator = KtvVocalEliminator()
     private var sharedPreferences: SharedPreferences? = null
     private val gson = Gson()
@@ -91,6 +92,7 @@ object KtvPlayerManager {
     fun initialize(context: Context) {
         if (player != null) return
 
+        appContext = context.applicationContext
         sharedPreferences = context.getSharedPreferences("ktv_prefs", Context.MODE_PRIVATE)
         loadHistoryAndFavorites()
 
@@ -247,7 +249,7 @@ object KtvPlayerManager {
     }
 
     private fun checkCacheAndPlay(song: SongItem, onUrlNeeded: () -> Unit) {
-        val context = player?.applicationContext ?: return onUrlNeeded()
+        val context = appContext ?: return onUrlNeeded()
         val cacheDir = File(context.filesDir, "ktv_cache")
         val cacheFileMp4 = File(cacheDir, "${song.hash.lowercase()}.mp4")
         val cacheFileMp3 = File(cacheDir, "${song.hash.lowercase()}.mp3")
@@ -263,7 +265,7 @@ object KtvPlayerManager {
 
     private fun downloadAndCache(hash: String, url: String, song: SongItem) {
         if (url.startsWith("file://") || url.isEmpty()) return
-        val context = player?.applicationContext ?: return
+        val context = appContext ?: return
         
         scope.launch(Dispatchers.IO) {
             try {
@@ -280,8 +282,11 @@ object KtvPlayerManager {
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     response.body?.use { body ->
-                        cacheFile.outputStream().use { out ->
-                            body.byteStream().copyTo(out)
+                        val outputStream = cacheFile.outputStream()
+                        try {
+                            body.byteStream().copyTo(outputStream)
+                        } finally {
+                            outputStream.close()
                         }
                         launch(Dispatchers.Main) {
                             addToLocalSongs(song)
