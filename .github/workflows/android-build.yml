@@ -13,16 +13,16 @@ jobs:
 
     steps:
     - name: Checkout Source Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
-        java-version: '17' # Gradle 8.x requires Java 17
+        java-version: '17'
 
     - name: Setup Gradle Cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
@@ -36,20 +36,20 @@ jobs:
       working-directory: ./KugoKTV
 
     # Optional: Sign the Release APK if secrets are configured.
-    # Otherwise, it falls back to the unsigned release APK or debug APK.
+    # Otherwise, it falls back to the unsigned release APK.
     - name: Sign Android Release APK
       id: sign_app
-      uses: r0adrunner/sign-android-release@v1
+      uses: r0adrunner/sign-android-release@v1.0.4
       with:
         releaseDirectory: ./KugoKTV/app/build/outputs/apk/release
         signingKeyBase64: ${{ secrets.SIGNING_KEY }}
         alias: ${{ secrets.ALIAS }}
         keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
         keyPassword: ${{ secrets.KEY_PASSWORD }}
-      continue-on-error: true # Do not fail the build if the user hasn't configured signing secrets yet
+      continue-on-error: true
 
     - name: Upload Unsigned / Signed APK Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: kugo-ktv-release-apk
         path: |
