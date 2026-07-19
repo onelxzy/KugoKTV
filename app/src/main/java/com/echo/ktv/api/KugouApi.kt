@@ -1,6 +1,8 @@
 package com.echo.ktv.api
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -34,6 +36,7 @@ object KugouApi {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private const val mid = "2882303761517560020"
     private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
     private const val BASE_URL = "https://gateway.kugou.com"
@@ -88,7 +91,9 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success(getFallbackMvs(keyword)))
+                mainHandler.post {
+                    callback(Result.success(getFallbackMvs(keyword)))
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -110,9 +115,13 @@ object KugouApi {
                             result.add(MvItem(title, artist, mvHash, duration, imgUrl))
                         }
                     }
-                    callback(Result.success(result))
+                    mainHandler.post {
+                        callback(Result.success(result))
+                    }
                 } catch (e: Exception) {
-                    callback(Result.success(getFallbackMvs(keyword)))
+                    mainHandler.post {
+                        callback(Result.success(getFallbackMvs(keyword)))
+                    }
                 }
             }
         })
@@ -139,7 +148,9 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success(getFallbackSongs(keyword)))
+                mainHandler.post {
+                    callback(Result.success(getFallbackSongs(keyword)))
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -164,9 +175,13 @@ object KugouApi {
                             result.add(SongItem(title, artist, hash, albumAudioId, duration))
                         }
                     }
-                    callback(Result.success(result))
+                    mainHandler.post {
+                        callback(Result.success(result))
+                    }
                 } catch (e: Exception) {
-                    callback(Result.success(getFallbackSongs(keyword)))
+                    mainHandler.post {
+                        callback(Result.success(getFallbackSongs(keyword)))
+                    }
                 }
             }
         })
@@ -183,7 +198,9 @@ object KugouApi {
     fun getMvUrl(mvHash: String, callback: (Result<String>) -> Unit) {
         val directUrl = directUrlMap[mvHash.lowercase()]
         if (directUrl != null) {
-            callback(Result.success(directUrl))
+            mainHandler.post {
+                callback(Result.success(directUrl))
+            }
             return
         }
 
@@ -225,7 +242,9 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                mainHandler.post {
+                    callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -240,12 +259,18 @@ object KugouApi {
                     
                     if (downurl != null && downurl.isNotEmpty()) {
                         downurl = downurl.replace("\\/", "/")
-                        callback(Result.success(downurl))
+                        mainHandler.post {
+                            callback(Result.success(downurl))
+                        }
                     } else {
-                        callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                        mainHandler.post {
+                            callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                        }
                     }
                 } catch (e: Exception) {
-                    callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                    mainHandler.post {
+                        callback(Result.success("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"))
+                    }
                 }
             }
         })
@@ -254,7 +279,9 @@ object KugouApi {
     fun getSongUrl(hash: String, albumAudioId: String, callback: (Result<String>) -> Unit) {
         val directUrl = directUrlMap[hash.lowercase()]
         if (directUrl != null) {
-            callback(Result.success(directUrl))
+            mainHandler.post {
+                callback(Result.success(directUrl))
+            }
             return
         }
 
@@ -294,7 +321,9 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                mainHandler.post {
+                    callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -306,12 +335,18 @@ object KugouApi {
                         ?: json.get("playUrl")?.asString
                     
                     if (playUrl != null && playUrl.isNotEmpty()) {
-                        callback(Result.success(playUrl))
+                        mainHandler.post {
+                            callback(Result.success(playUrl))
+                        }
                     } else {
-                        callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                        mainHandler.post {
+                            callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                        }
                     }
                 } catch (e: Exception) {
-                    callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                    mainHandler.post {
+                        callback(Result.success("https://music.163.com/song/media/outer/url?id=186016.mp3"))
+                    }
                 }
             }
         })
@@ -325,7 +360,9 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                callback(Result.success(getFallbackHotSongs()))
+                mainHandler.post {
+                    callback(Result.success(getFallbackHotSongs()))
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -350,9 +387,13 @@ object KugouApi {
                             result.add(SongItem(title, artist, hash, albumAudioId, duration))
                         }
                     }
-                    callback(Result.success(result))
+                    mainHandler.post {
+                        callback(Result.success(result))
+                    }
                 } catch (e: Exception) {
-                    callback(Result.success(getFallbackHotSongs()))
+                    mainHandler.post {
+                        callback(Result.success(getFallbackHotSongs()))
+                    }
                 }
             }
         })
