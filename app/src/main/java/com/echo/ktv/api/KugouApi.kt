@@ -1,5 +1,6 @@
 package com.echo.ktv.api
 
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -27,92 +28,50 @@ data class MvItem(
 )
 
 object KugouApi {
+    private const val TAG = "KugouApi"
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
     private const val mid = "2882303761517560020"
-    private const val BASE_URL = "https://gateway.kugou.com"
+    private const val dfid = "-"
+    private const val uuid = "-"
+    private const val GATEWAY = "https://gateway.kugou.com"
 
-    private fun getCommonHeaders(clientTime: String): Headers {
+    private fun getGatewayHeaders(clientTime: String): Headers {
         return Headers.Builder()
-            .add("DF", "0")
-            .add("Mid", mid)
-            .add("Uuid", "0")
+            .add("dfid", dfid)
+            .add("mid", mid)
             .add("clienttime", clientTime)
-            .add("clientver", SignatureUtils.CLIENT_VER)
-            .add("appid", SignatureUtils.APP_ID)
-            .add("User-Agent", "Android712-AndroidPhone-8983-18-0-wifi")
+            .add("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
             .build()
-    }
-
-    private fun randomDfid(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..24).map { chars.random() }.joinToString("")
     }
 
     // ======================== SEARCH ========================
-    // Restored gateway-signed search matching EchoMusic search.js
-    // Uses /v3/search/song with x-router: complexsearch.kugou.com
+    // Uses public CDN endpoint — no signature needed, confirmed working format
 
     fun searchSong(keyword: String, callback: (Result<List<SongItem>>) -> Unit) {
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "keyword" to keyword,
-            "page" to "1",
-            "pagesize" to "30",
-            "platform" to "AndroidFilter",
-            "iscorrection" to "1",
-            "albumhide" to "0",
-            "nocollect" to "0",
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTime
-        )
-        params["signature"] = SignatureUtils.signatureAndroidParams(params)
-
-        val urlBuilder = "$BASE_URL/v3/search/song".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
-        }
-
-        val request = Request.Builder()
-            .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
-            .addHeader("x-router", "complexsearch.kugou.com")
-            .build()
+        val url = "http://mobilecdn.kugou.com/api/v3/search/song?keyword=${java.net.URLEncoder.encode(keyword, "UTF-8")}&page=1&pagesize=30&showtype=1"
+        val request = Request.Builder().url(url).build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "searchSong failed", e)
                 callback(Result.success(emptyList()))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
+                    Log.d(TAG, "searchSong response: ${body.take(200)}")
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val data = json.getAsJsonObject("data")
-                    val info = data?.getAsJsonArray("info") ?: data?.getAsJsonArray("lists") ?: JsonArray()
-                    
-                    val result = mutableListOf<SongItem>()
-                    for (element in info) {
-                        val itemObj = element.asJsonObject
-                        val filename = itemObj.get("filename")?.asString ?: ""
-                        val parts = filename.split(" - ", limit = 2)
-                        val artist = parts.getOrNull(0)?.trim() ?: ""
-                        val title = parts.getOrNull(1)?.trim() ?: filename
-                        
-                        val hash = itemObj.get("hash")?.asString ?: ""
-                        val albumAudioId = itemObj.get("album_audio_id")?.asString
-                            ?: itemObj.get("AlbumAudioId")?.asString ?: ""
-                        val duration = itemObj.get("duration")?.asInt ?: 0
-                        if (hash.isNotEmpty()) {
-                            result.add(SongItem(title, artist, hash, albumAudioId, duration))
-                        }
-                    }
+                    val info = data?.getAsJsonArray("info") ?: JsonArray()
+                    val result = parseSongList(info)
                     callback(Result.success(result))
                 } catch (e: Exception) {
+                    Log.e(TAG, "searchSong parse error", e)
                     callback(Result.success(emptyList()))
                 }
             }
@@ -120,160 +79,123 @@ object KugouApi {
     }
 
     fun searchMV(keyword: String, callback: (Result<List<MvItem>>) -> Unit) {
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val params = mutableMapOf(
-            "keyword" to keyword,
-            "page" to "1",
-            "pagesize" to "30",
-            "platform" to "AndroidFilter",
-            "iscorrection" to "1",
-            "albumhide" to "0",
-            "nocollect" to "0",
-            "appid" to SignatureUtils.APP_ID,
-            "clientver" to SignatureUtils.CLIENT_VER,
-            "clienttime" to clientTime
-        )
-        params["signature"] = SignatureUtils.signatureAndroidParams(params)
-
-        val urlBuilder = "$BASE_URL/v1/search/mv".toHttpUrl().newBuilder()
-        for ((key, value) in params) {
-            urlBuilder.addQueryParameter(key, value)
-        }
-
-        val request = Request.Builder()
-            .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
-            .addHeader("x-router", "complexsearch.kugou.com")
-            .build()
+        val url = "http://mobilecdn.kugou.com/api/v3/search/mv?keyword=${java.net.URLEncoder.encode(keyword, "UTF-8")}&page=1&pagesize=30"
+        val request = Request.Builder().url(url).build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "searchMV failed", e)
                 callback(Result.success(emptyList()))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
+                    Log.d(TAG, "searchMV response: ${body.take(200)}")
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val data = json.getAsJsonObject("data")
-                    val info = data?.getAsJsonArray("info") ?: data?.getAsJsonArray("lists") ?: JsonArray()
-                    
+                    val info = data?.getAsJsonArray("info") ?: JsonArray()
                     val result = mutableListOf<MvItem>()
                     for (element in info) {
-                        val itemObj = element.asJsonObject
-                        val title = itemObj.get("mvname")?.asString
-                            ?: itemObj.get("songname")?.asString ?: ""
-                        val artist = itemObj.get("singername")?.asString ?: ""
-                        val mvHash = itemObj.get("mvhash")?.asString
-                            ?: itemObj.get("hash")?.asString ?: ""
-                        val duration = itemObj.get("duration")?.asInt ?: 0
-                        val imgUrl = itemObj.get("imgurl")?.asString ?: ""
+                        val obj = element.asJsonObject
+                        val filename = obj.get("filename")?.asString ?: ""
+                        val parts = filename.split(" - ", limit = 2)
+                        val artist = parts.getOrNull(0)?.trim() ?: ""
+                        val title = parts.getOrNull(1)?.trim() ?: filename
+                        val mvHash = obj.get("mvhash")?.asString
+                            ?: obj.get("hash")?.asString ?: ""
+                        val duration = obj.get("duration")?.asInt ?: 0
+                        val imgUrl = obj.get("imgurl")?.asString ?: ""
                         if (mvHash.isNotEmpty()) {
                             result.add(MvItem(title, artist, mvHash, duration, imgUrl))
                         }
                     }
                     callback(Result.success(result))
                 } catch (e: Exception) {
+                    Log.e(TAG, "searchMV parse error", e)
                     callback(Result.success(emptyList()))
                 }
             }
         })
     }
 
-    // ======================== PLAYBACK URLS ========================
-    // Song URL: follows EchoMusic song_url.js → GET /v5/url via trackercdn.kugou.com
-    // with encryptKey (key param) and NO signature (notSign)
+    // ======================== PLAYBACK URLs ========================
+    // getSongUrl: follows EchoMusic song_url.js flow
+    // Gateway /v5/url with signature (notSign in song_url.js doesn't match notSignature in request.js,
+    // so signature IS generated) and encryptKey (key param added)
 
     fun getSongUrl(hash: String, albumAudioId: String, callback: (Result<String>) -> Unit) {
         val clientTime = (System.currentTimeMillis() / 1000).toString()
         val hashLower = hash.lowercase()
-        val key = SignatureUtils.signKey(hashLower, mid)
 
-        val urlBuilder = "$BASE_URL/v5/url".toHttpUrl().newBuilder()
-            .addQueryParameter("hash", hashLower)
-            .addQueryParameter("album_id", "0")
-            .addQueryParameter("album_audio_id", albumAudioId)
-            .addQueryParameter("area_code", "1")
-            .addQueryParameter("behavior", "play")
-            .addQueryParameter("pid", "411")
-            .addQueryParameter("cmd", "26")
-            .addQueryParameter("pidversion", "3001")
-            .addQueryParameter("quality", "128")
-            .addQueryParameter("version", "11430")
-            .addQueryParameter("page_id", "967177915")
-            .addQueryParameter("ssa_flag", "is_fromtrack")
-            .addQueryParameter("ppage_id", "356753938,823673182,967485191")
-            .addQueryParameter("cdnBackup", "1")
-            .addQueryParameter("module", "")
-            .addQueryParameter("clientver", "11430")
-            .addQueryParameter("key", key)
-            .addQueryParameter("appid", SignatureUtils.APP_ID)
-            .addQueryParameter("clienttime", clientTime)
-            .addQueryParameter("IsFreePart", "0")
+        // Build params matching EchoMusic's song_url.js + request.js defaultParams merge
+        val params = mutableMapOf(
+            "hash" to hashLower,
+            "album_id" to "0",
+            "album_audio_id" to albumAudioId,
+            "area_code" to "1",
+            "behavior" to "play",
+            "pid" to "411",
+            "cmd" to "26",
+            "pidversion" to "3001",
+            "quality" to "128",
+            "version" to "11430",
+            "page_id" to "967177915",
+            "ssa_flag" to "is_fromtrack",
+            "ppage_id" to "356753938,823673182,967485191",
+            "cdnBackup" to "1",
+            "module" to "",
+            "clientver" to "11430",
+            "IsFreePart" to "0",
+            // Default params that request.js merges in
+            "dfid" to dfid,
+            "mid" to mid,
+            "uuid" to uuid,
+            "appid" to SignatureUtils.APP_ID,
+            "clienttime" to clientTime
+        )
+        // encryptKey: add key param
+        params["key"] = SignatureUtils.signKey(hashLower, mid)
+        // signature is computed after all params are merged
+        params["signature"] = SignatureUtils.signatureAndroidParams(params)
+
+        val urlBuilder = "$GATEWAY/v5/url".toHttpUrl().newBuilder()
+        for ((k, v) in params) urlBuilder.addQueryParameter(k, v)
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
+            .headers(getGatewayHeaders(clientTime))
             .addHeader("x-router", "trackercdn.kugou.com")
-            .addHeader("dfid", randomDfid())
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "getSongUrl failed", e)
                 callback(Result.failure(e))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
+                    Log.d(TAG, "getSongUrl response: ${body.take(300)}")
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    var playUrl: String? = null
-
-                    // Format 1: { "url": ["http://..."] }
-                    val urlArr = json.getAsJsonArray("url")
-                    if (urlArr != null && urlArr.size() > 0) {
-                        playUrl = urlArr[0].asString
-                    }
-                    // Format 2: { "data": { "url": "..." } }
-                    if (playUrl.isNullOrEmpty()) {
-                        playUrl = json.getAsJsonObject("data")?.get("play_url")?.asString
-                    }
-                    if (playUrl.isNullOrEmpty()) {
-                        playUrl = json.getAsJsonObject("data")?.get("url")?.asString
-                    }
-                    // Format 3: { "data": [{ "url": "..." }] }
-                    if (playUrl.isNullOrEmpty()) {
-                        val dataArr = json.getAsJsonArray("data")
-                        if (dataArr != null && dataArr.size() > 0) {
-                            playUrl = dataArr[0].asJsonObject?.get("url")?.asString
-                        }
-                    }
-                    // Format 4: backup urls
-                    if (playUrl.isNullOrEmpty()) {
-                        val backupArr = json.getAsJsonArray("backupUrl")
-                        if (backupArr != null && backupArr.size() > 0) {
-                            playUrl = backupArr[0].asString
-                        }
-                    }
-
-                    if (!playUrl.isNullOrEmpty()) {
-                        callback(Result.success(playUrl.replace("\\/", "/")))
+                    val playUrl = extractUrlFromResponse(json)
+                    if (playUrl != null) {
+                        callback(Result.success(playUrl))
                     } else {
-                        callback(Result.failure(Exception("No song URL found: $body")))
+                        callback(Result.failure(Exception("No song URL in response")))
                     }
                 } catch (e: Exception) {
+                    Log.e(TAG, "getSongUrl parse error", e)
                     callback(Result.failure(e))
                 }
             }
         })
     }
 
-    // MV URL: follows EchoMusic video_url.js → GET /v2/interface/index via trackermv.kugou.com
-    // with encryptKey (key param) AND signature
-
+    // getMvUrl: follows EchoMusic video_url.js → /v2/interface/index via trackermv.kugou.com
     fun getMvUrl(mvHash: String, callback: (Result<String>) -> Unit) {
         val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val key = SignatureUtils.signKey(mvHash, mid)
 
         val params = mutableMapOf(
             "backupdomain" to "1",
@@ -283,35 +205,41 @@ object KugouApi {
             "hash" to mvHash,
             "pid" to "1",
             "type" to "1",
-            "key" to key,
+            // Default params from request.js
+            "dfid" to dfid,
+            "mid" to mid,
+            "uuid" to uuid,
             "appid" to SignatureUtils.APP_ID,
             "clientver" to SignatureUtils.CLIENT_VER,
             "clienttime" to clientTime
         )
+        // encryptKey
+        params["key"] = SignatureUtils.signKey(mvHash, mid)
+        // signature
         params["signature"] = SignatureUtils.signatureAndroidParams(params)
 
-        val urlBuilder = "$BASE_URL/v2/interface/index".toHttpUrl().newBuilder()
-        for ((k, v) in params) {
-            urlBuilder.addQueryParameter(k, v)
-        }
+        val urlBuilder = "$GATEWAY/v2/interface/index".toHttpUrl().newBuilder()
+        for ((k, v) in params) urlBuilder.addQueryParameter(k, v)
 
         val request = Request.Builder()
             .url(urlBuilder.build())
-            .headers(getCommonHeaders(clientTime))
+            .headers(getGatewayHeaders(clientTime))
             .addHeader("x-router", "trackermv.kugou.com")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "getMvUrl failed", e)
                 callback(Result.failure(e))
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
+                    Log.d(TAG, "getMvUrl response: ${body.take(300)}")
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val mvdata = json.getAsJsonObject("mvdata")
-                    var downurl = mvdata?.getAsJsonObject("le")?.get("downurl")?.asString
+                    val downurl = mvdata?.getAsJsonObject("le")?.get("downurl")?.asString
                         ?: mvdata?.getAsJsonObject("rq")?.get("downurl")?.asString
                         ?: mvdata?.getAsJsonObject("sq")?.get("downurl")?.asString
                         ?: mvdata?.getAsJsonObject("sd")?.get("downurl")?.asString
@@ -320,9 +248,10 @@ object KugouApi {
                     if (!downurl.isNullOrEmpty()) {
                         callback(Result.success(downurl.replace("\\/", "/")))
                     } else {
-                        callback(Result.failure(Exception("No MV URL: $body")))
+                        callback(Result.failure(Exception("No MV URL found")))
                     }
                 } catch (e: Exception) {
+                    Log.e(TAG, "getMvUrl parse error", e)
                     callback(Result.failure(e))
                 }
             }
@@ -330,16 +259,13 @@ object KugouApi {
     }
 
     // ======================== HOT SONGS (RANK) ========================
-    // Uses public unsigned CDN endpoint (confirmed working)
-
     fun getHotSongs(callback: (Result<List<SongItem>>) -> Unit) {
         val url = "http://mobilecdnbj.kugou.com/api/v3/rank/song?pagesize=50&rankid=6666&page=1"
-        val request = Request.Builder()
-            .url(url)
-            .build()
+        val request = Request.Builder().url(url).build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "getHotSongs failed", e)
                 callback(Result.success(emptyList()))
             }
 
@@ -349,27 +275,56 @@ object KugouApi {
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val data = json.getAsJsonObject("data")
                     val info = data?.getAsJsonArray("info") ?: JsonArray()
-
-                    val result = mutableListOf<SongItem>()
-                    for (element in info) {
-                        val itemObj = element.asJsonObject
-                        val filename = itemObj.get("filename")?.asString ?: ""
-                        val parts = filename.split(" - ", limit = 2)
-                        val artist = parts.getOrNull(0)?.trim() ?: ""
-                        val title = parts.getOrNull(1)?.trim() ?: filename
-
-                        val hash = itemObj.get("hash")?.asString ?: ""
-                        val albumAudioId = itemObj.get("album_audio_id")?.asString ?: ""
-                        val duration = itemObj.get("duration")?.asInt ?: 0
-                        if (hash.isNotEmpty()) {
-                            result.add(SongItem(title, artist, hash, albumAudioId, duration))
-                        }
-                    }
-                    callback(Result.success(result))
+                    callback(Result.success(parseSongList(info)))
                 } catch (e: Exception) {
+                    Log.e(TAG, "getHotSongs parse error", e)
                     callback(Result.success(emptyList()))
                 }
             }
         })
+    }
+
+    // ======================== Helpers ========================
+    private fun parseSongList(info: JsonArray): List<SongItem> {
+        val result = mutableListOf<SongItem>()
+        for (element in info) {
+            val obj = element.asJsonObject
+            val filename = obj.get("filename")?.asString ?: ""
+            val parts = filename.split(" - ", limit = 2)
+            val artist = parts.getOrNull(0)?.trim() ?: ""
+            val title = parts.getOrNull(1)?.trim() ?: filename
+            val hash = obj.get("hash")?.asString ?: ""
+            val albumAudioId = obj.get("album_audio_id")?.asString ?: ""
+            val duration = obj.get("duration")?.asInt ?: 0
+            if (hash.isNotEmpty()) {
+                result.add(SongItem(title, artist, hash, albumAudioId, duration))
+            }
+        }
+        return result
+    }
+
+    private fun extractUrlFromResponse(json: JsonObject): String? {
+        // Try multiple response formats
+        // Format: { "url": ["http://..."] }
+        json.getAsJsonArray("url")?.let { arr ->
+            if (arr.size() > 0) arr[0].asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+        }
+        // Format: { "data": { "play_url": "..." } }
+        json.getAsJsonObject("data")?.let { data ->
+            data.get("play_url")?.asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+            data.get("url")?.asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+        }
+        // Format: { "data": [{ "url": "..." }] }
+        json.getAsJsonArray("data")?.let { arr ->
+            if (arr.size() > 0) {
+                arr[0].asJsonObject?.get("url")?.asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+                arr[0].asJsonObject?.get("play_url")?.asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+            }
+        }
+        // Format: { "backupUrl": ["http://..."] }
+        json.getAsJsonArray("backupUrl")?.let { arr ->
+            if (arr.size() > 0) arr[0].asString?.takeIf { it.isNotEmpty() }?.let { return it.replace("\\/", "/") }
+        }
+        return null
     }
 }

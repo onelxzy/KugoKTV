@@ -1,7 +1,7 @@
 package com.echo.ktv.playback
 
 import android.content.Context
-import androidx.media3.common.C
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
@@ -36,26 +36,22 @@ sealed class PlayableItem {
 }
 
 object KtvPlayerManager {
+    private const val TAG = "KtvPlayerManager"
     private var player: ExoPlayer? = null
     private val vocalEliminator = KtvVocalEliminator()
 
-    // Playlist Queue
     private val _playlist = MutableStateFlow<List<PlayableItem>>(emptyList())
     val playlist: StateFlow<List<PlayableItem>> = _playlist
 
-    // Current Playing Item
     private val _currentPlaying = MutableStateFlow<PlayableItem?>(null)
     val currentPlaying: StateFlow<PlayableItem?> = _currentPlaying
 
-    // Vocal elimination state
     private val _isVocalEliminated = MutableStateFlow(false)
     val isVocalEliminated: StateFlow<Boolean> = _isVocalEliminated
 
-    // Music playback volume (0.0 to 1.0)
     private val _musicVolume = MutableStateFlow(1.0f)
     val musicVolume: StateFlow<Float> = _musicVolume
 
-    // Playback state
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
 
@@ -89,8 +85,8 @@ object KtvPlayerManager {
                         }
                     }
 
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _isPlaying.value = isPlaying
+                    override fun onIsPlayingChanged(playing: Boolean) {
+                        _isPlaying.value = playing
                     }
                 })
             }
@@ -126,66 +122,97 @@ object KtvPlayerManager {
         }
     }
 
+    /**
+     * Play the next item from the queue.
+     * MUST be called from Main thread or via scope.launch(Dispatchers.Main).
+     */
     fun playNext() {
-        val list = _playlist.value.toMutableList()
-        if (list.isEmpty()) {
-            player?.stop()
-            _currentPlaying.value = null
-            return
-        }
+        // Ensure we're on the Main thread for ExoPlayer operations
+        scope.launch(Dispatchers.Main) {
+            try {
+                val list = _playlist.value.toMutableList()
+                if (list.isEmpty()) {
+                    player?.stop()
+                    _currentPlaying.value = null
+                    return@launch
+                }
 
-        val nextItem = list.removeAt(0)
-        _playlist.value = list
-        _currentPlaying.value = nextItem
+                val nextItem = list.removeAt(0)
+                _playlist.value = list
+                _currentPlaying.value = nextItem
 
-        scope.launch {
-            when (nextItem) {
-                is PlayableItem.Mv -> {
-                    KugouApi.getMvUrl(nextItem.mvItem.mvHash) { result ->
-                        result.onSuccess { url ->
-                            startPlayback(url)
+                when (nextItem) {
+                    is PlayableItem.Mv -> {
+                        KugouApi.getMvUrl(nextItem.mvItem.mvHash) { result ->
+                            // OkHttp callback is on background thread!
+                            // Must switch to Main for ExoPlayer operations
+                            scope.launch(Dispatchers.Main) {
+                                result.onSuccess { url ->
+                                    Log.d(TAG, "MV URL resolved: ${url.take(80)}")
+                                    startPlaybackInternal(url)
+                                }
+                                result.onFailure { e ->
+                                    Log.e(TAG, "MV URL failed, trying audio fallback: ${e.message}")
+                                    fallbackToAudioSearch(nextItem.title)
+                                }
+                            }
                         }
-                        result.onFailure {
-                            // Fallback to searching audio if MV playback link fails
-                            fallbackToAudioSearch(nextItem.title)
+                    }
+                    is PlayableItem.Song -> {
+                        KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
+                            scope.launch(Dispatchers.Main) {
+                                result.onSuccess { url ->
+                                    Log.d(TAG, "Song URL resolved: ${url.take(80)}")
+                                    startPlaybackInternal(url)
+                                }
+                                result.onFailure { e ->
+                                    Log.e(TAG, "Song URL failed, skipping: ${e.message}")
+                                    playNext()
+                                }
+                            }
                         }
                     }
                 }
-                is PlayableItem.Song -> {
-                    KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
-                        result.onSuccess { url ->
-                            startPlayback(url)
-                        }
-                        result.onFailure {
-                            playNext() // Skip on failure
-                        }
-                    }
-                }
+            } catch (e: Exception) {
+                Log.e(TAG, "playNext error", e)
             }
         }
     }
 
     private fun fallbackToAudioSearch(title: String) {
         KugouApi.searchSong(title) { result ->
-            result.onSuccess { songs ->
-                if (songs.isNotEmpty()) {
-                    val firstSong = songs[0]
-                    KugouApi.getSongUrl(firstSong.hash, firstSong.albumAudioId) { urlResult ->
-                        urlResult.onSuccess { url ->
-                            startPlayback(url)
+            scope.launch(Dispatchers.Main) {
+                result.onSuccess { songs ->
+                    if (songs.isNotEmpty()) {
+                        val firstSong = songs[0]
+                        KugouApi.getSongUrl(firstSong.hash, firstSong.albumAudioId) { urlResult ->
+                            scope.launch(Dispatchers.Main) {
+                                urlResult.onSuccess { url ->
+                                    Log.d(TAG, "Fallback URL resolved: ${url.take(80)}")
+                                    startPlaybackInternal(url)
+                                }
+                                urlResult.onFailure {
+                                    Log.e(TAG, "Fallback also failed, skipping")
+                                    playNext()
+                                }
+                            }
                         }
-                        urlResult.onFailure { playNext() }
+                    } else {
+                        playNext()
                     }
-                } else {
+                }
+                result.onFailure {
                     playNext()
                 }
             }
-            result.onFailure { playNext() }
         }
     }
 
-    private fun startPlayback(url: String) {
-        scope.launch(Dispatchers.Main) {
+    /**
+     * Internal playback start — MUST be called from Main thread.
+     */
+    private fun startPlaybackInternal(url: String) {
+        try {
             player?.let { p ->
                 p.stop()
                 p.clearMediaItems()
@@ -194,9 +221,10 @@ object KtvPlayerManager {
                 p.volume = _musicVolume.value
                 p.prepare()
                 p.play()
-                // Reset vocal elimination state on new track
                 setVocalElimination(_isVocalEliminated.value)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "startPlayback error", e)
         }
     }
 
@@ -212,7 +240,6 @@ object KtvPlayerManager {
         scope.launch(Dispatchers.Main) {
             _isVocalEliminated.value = enabled
             vocalEliminator.setEliminateVocal(enabled)
-            // Force ExoPlayer to reload renderers/processors configuration
             player?.let { p ->
                 if (p.playbackState != Player.STATE_IDLE) {
                     val parameters = p.playbackParameters
