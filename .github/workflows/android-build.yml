@@ -33,7 +33,6 @@ jobs:
 
     - name: Build Release APK
       run: gradle assembleRelease
-      working-directory: ./KugoKTV
 
     - name: Sign Android Release APK
       run: |
@@ -52,7 +51,6 @@ jobs:
         else
           echo "No unsigned APK found to sign."
         fi
-      working-directory: ./KugoKTV
       continue-on-error: true
 
     - name: Upload Unsigned / Signed APK Artifact
@@ -60,4 +58,4 @@ jobs:
       with:
         name: kugo-ktv-release-apk
         path: |
-          ./KugoKTV/app/build/outputs/apk/release/*.apk
+          ./app/build/outputs/apk/release/*.apk
