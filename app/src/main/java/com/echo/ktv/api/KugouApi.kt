@@ -38,11 +38,9 @@ object KugouApi {
     private val mainHandler = Handler(Looper.getMainLooper())
     private const val mid = "2882303761517560020"
     private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
-    private const val BASE_URL = "https://gateway.kugou.com"
 
-    // Guaranteed working 200 OK fallback URLs
+    // Guaranteed working 200 OK fallback audio URL
     private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=188214.mp3" // 张学友 - 吻别
-    private const val FALLBACK_MV_URL = "http://vjs.zencdn.net/v/oceans.mp4" // Sample Oceans MP4
 
     // Real Direct Audio URL Mapping for popular songs
     private val directUrlMap = mapOf(
@@ -266,7 +264,8 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                mainHandler.post { callback(Result.success(FALLBACK_MV_URL)) }
+                // Fallback to song audio stream instead of random video
+                getSongUrl(mvHash, "", callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -283,10 +282,10 @@ object KugouApi {
                         downurl = downurl.replace("\\/", "/")
                         mainHandler.post { callback(Result.success(downurl)) }
                     } else {
-                        mainHandler.post { callback(Result.success(FALLBACK_MV_URL)) }
+                        getSongUrl(mvHash, "", callback)
                     }
                 } catch (e: Exception) {
-                    mainHandler.post { callback(Result.success(FALLBACK_MV_URL)) }
+                    getSongUrl(mvHash, "", callback)
                 }
             }
         })

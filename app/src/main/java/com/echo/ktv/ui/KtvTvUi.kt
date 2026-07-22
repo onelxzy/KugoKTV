@@ -177,7 +177,10 @@ fun MainTvScreen() {
 
     if (isPlayerFullscreen && currentPlaying != null) {
         // Fullscreen Player
-        VideoPlayerOverlay(currentPlaying!!)
+        VideoPlayerOverlay(
+            item = currentPlaying!!,
+            onCloseFullscreen = { isPlayerFullscreen = false }
+        )
     } else {
         // Main Home Layout or Tab Sub-screen
         Box(
@@ -353,13 +356,13 @@ fun MainTvScreen() {
                                 GridCard(
                                     title = "本地",
                                     subtitle = "离线免网缓存库",
-                                    emoji = "🪐",
+                                    emoji = "📁",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF4A00E0), Color(0xFF8E2DE2))
                                     ),
                                     onClick = {
                                         displaySongsList = localSongs
-                                        listTitle = "🪐 本地缓存歌曲"
+                                        listTitle = "📁 本地缓存歌曲"
                                         currentTab = "songs_list"
                                     },
                                     modifier = Modifier.weight(1f)
@@ -561,7 +564,7 @@ fun IntegratedPlayerWindow(
                         .fillMaxWidth()
                         .align(Alignment.BottomStart)
                         .background(Color(0x99000000))
-                        .padding(10.dp)
+                        .padding(8.dp)
                 ) {
                     Column {
                         Text(
@@ -699,7 +702,9 @@ fun TallFeatureCard(
                     text = title,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -786,7 +791,9 @@ fun SongsListGrid(title: String, songs: List<SongItem>, onSelect: (SongItem) -> 
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = KtvTheme.TextMain,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 16.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         if (songs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -810,7 +817,7 @@ fun SongsListGrid(title: String, songs: List<SongItem>, onSelect: (SongItem) -> 
                                 .padding(16.dp)
                         ) {
                             Text(song.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(song.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                            Text(song.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, modifier = Modifier.padding(top = 4.dp), overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -1095,9 +1102,9 @@ fun PlaylistQueueContent(list: List<PlayableItem>, currentPlaying: PlayableItem?
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("▶ 正在播放", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = KtvTheme.Accent)
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text(currentPlaying.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(currentPlaying.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(currentPlaying.artist, fontSize = 14.sp, color = KtvTheme.TextMuted)
+                    Text(currentPlaying.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1115,9 +1122,9 @@ fun PlaylistQueueContent(list: List<PlayableItem>, currentPlaying: PlayableItem?
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain)
+                            Text(item.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text(item.artist, fontSize = 14.sp, color = KtvTheme.TextMuted)
+                            Text(item.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -1127,7 +1134,11 @@ fun PlaylistQueueContent(list: List<PlayableItem>, currentPlaying: PlayableItem?
 }
 
 @Composable
-fun VideoPlayerOverlay(item: PlayableItem) {
+fun VideoPlayerOverlay(
+    item: PlayableItem,
+    onCloseFullscreen: () -> Unit
+) {
+    val context = LocalContext.current
     val isVocalEliminated by KtvPlayerManager.isVocalEliminated.collectAsState()
     val musicVolume by KtvPlayerManager.musicVolume.collectAsState()
     val isPlaying by KtvPlayerManager.isPlaying.collectAsState()
@@ -1136,6 +1147,13 @@ fun VideoPlayerOverlay(item: PlayableItem) {
     val player = KtvPlayerManager.getPlayer()
     var currentPosition by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
+
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(300)
+        focusRequester.requestFocus()
+    }
 
     LaunchedEffect(player, isPlaying) {
         while (true) {
@@ -1159,7 +1177,44 @@ fun VideoPlayerOverlay(item: PlayableItem) {
     val songItemRepresentation = remember(item) { item.toSongItem() }
     val isFav = favorites.contains(songItemRepresentation)
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.key) {
+                        Key.DirectionLeft -> {
+                            player?.let { p ->
+                                val newPos = (p.currentPosition - 10000L).coerceAtLeast(0L)
+                                p.seekTo(newPos)
+                                Toast.makeText(context, "<< 快退 10 秒", Toast.LENGTH_SHORT).show()
+                            }
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            player?.let { p ->
+                                val targetDuration = p.duration.coerceAtLeast(0L)
+                                val newPos = (p.currentPosition + 10000L).coerceAtMost(targetDuration)
+                                p.seekTo(newPos)
+                                Toast.makeText(context, ">> 快进 10 秒", Toast.LENGTH_SHORT).show()
+                            }
+                            true
+                        }
+                        Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
+                            KtvPlayerManager.togglePlayPause()
+                            true
+                        }
+                        Key.Back, Key.Escape -> {
+                            onCloseFullscreen()
+                            true
+                        }
+                        else -> false
+                    }
+                } else false
+            }
+    ) {
         if (player != null) {
             AndroidView(
                 factory = { ctx ->
@@ -1183,53 +1238,61 @@ fun VideoPlayerOverlay(item: PlayableItem) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 40.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
+                            .size(130.dp)
                             .background(Color(0xFF00E5FF).copy(alpha = 0.1f), CircleShape)
                             .border(3.dp, Color(0xFF00E5FF), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🎵", fontSize = 64.sp)
+                        Text("🎵", fontSize = 60.sp)
                     }
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = "正在伴奏播放...",
-                        fontSize = 20.sp,
+                        text = if (isVocalEliminated) "正在伴奏播放..." else "正在原唱播放...",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = KtvTheme.Accent
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = item.title,
-                        fontSize = 28.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = item.artist,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         color = KtvTheme.TextMuted,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
 
+        // Bottom Overlay Bar (height limited so title overflow never pushes buttons off-screen)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .background(Color(0xCC070A13))
-                .padding(20.dp)
+                .padding(horizontal = 24.dp, vertical = 14.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Progress Bar and Time
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LinearProgressIndicator(
@@ -1254,39 +1317,57 @@ fun VideoPlayerOverlay(item: PlayableItem) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
-                        Text(item.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(item.artist, fontSize = 16.sp, color = KtvTheme.TextMuted, modifier = Modifier.padding(top = 4.dp))
+                    Column(modifier = Modifier.weight(0.4f)) {
+                        Text(
+                            text = item.title,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = item.artist,
+                            fontSize = 14.sp,
+                            color = KtvTheme.TextMuted,
+                            modifier = Modifier.padding(top = 2.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.weight(0.6f)
+                    ) {
                         TvFocusableItem(onClick = { KtvPlayerManager.togglePlayPause() }) { _ ->
-                            Text(if (isPlaying) "暂停 ⏸" else "播放 ▶", color = Color.White, modifier = Modifier.padding(12.dp))
+                            Text(if (isPlaying) "暂停 ⏸" else "播放 ▶", color = Color.White, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         TvFocusableItem(onClick = { KtvPlayerManager.toggleFavorite(songItemRepresentation) }) { _ ->
                             Text(
-                                text = if (isFav) "已收藏 ❤️" else "收藏 🤍",
+                                text = if (isFav) "已收藏 ❤️" else "收藏 ♡",
                                 color = if (isFav) Color.Red else Color.White,
-                                modifier = Modifier.padding(12.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         TvFocusableItem(onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }) { _ ->
                             Text(
                                 text = if (isVocalEliminated) "🎙 伴奏模式" else "🎤 原唱模式",
                                 color = if (isVocalEliminated) KtvTheme.Accent else Color.White,
-                                modifier = Modifier.padding(12.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         TvFocusableItem(onClick = { KtvPlayerManager.skipCurrent() }) { _ ->
-                            Text("切歌 ⏭", color = Color.White, modifier = Modifier.padding(12.dp))
+                            Text("切歌 ⏭", color = Color.White, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "伴奏音量: ${(musicVolume * 100).toInt()}%",
-                            fontSize = 16.sp,
+                            text = "音量: ${(musicVolume * 100).toInt()}%",
+                            fontSize = 14.sp,
                             color = Color.White
                         )
                     }

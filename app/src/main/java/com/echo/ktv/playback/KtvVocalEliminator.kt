@@ -10,6 +10,7 @@ import java.nio.ByteOrder
 class KtvVocalEliminator : AudioProcessor {
     private var inputFormat = AudioFormat.NOT_SET
     private var outputFormat = AudioFormat.NOT_SET
+    @Volatile
     private var isEliminating = false
     private var buffer = AudioProcessor.EMPTY_BUFFER
     private var outputBuffer = AudioProcessor.EMPTY_BUFFER
@@ -25,13 +26,13 @@ class KtvVocalEliminator : AudioProcessor {
         if (format.encoding != C.ENCODING_PCM_16BIT) {
             throw UnhandledAudioFormatException(format)
         }
-        // Vocal cancellation works best with stereo audio (2 channels)
         inputFormat = format
         outputFormat = format
         return outputFormat
     }
 
-    override fun isActive(): Boolean = isEliminating && inputFormat.channelCount == 2
+    // Always active for 2-channel stereo PCM so processor stays in ExoPlayer pipeline
+    override fun isActive(): Boolean = inputFormat.channelCount == 2 && inputFormat.encoding == C.ENCODING_PCM_16BIT
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val position = inputBuffer.position()
@@ -44,17 +45,21 @@ class KtvVocalEliminator : AudioProcessor {
             outputBuffer.clear()
         }
 
-        // Stereo 16-bit PCM: Left (2 bytes), Right (2 bytes), Left (2 bytes), Right (2 bytes) ...
-        while (inputBuffer.hasRemaining()) {
-            val left = inputBuffer.short
-            val right = inputBuffer.short
+        if (!isEliminating) {
+            // Pass-through without modification when vocal elimination is off
+            outputBuffer.put(inputBuffer)
+        } else {
+            // Stereo 16-bit PCM: Left (2 bytes), Right (2 bytes)
+            while (inputBuffer.hasRemaining()) {
+                val left = inputBuffer.short
+                val right = inputBuffer.short
 
-            // Center Channel Cancellation: Diff = (Left - Right) / 2
-            val diff = ((left.toInt() - right.toInt()) / 2).coerceIn(-32768, 32767).toShort()
+                // Center Channel Vocal Cancellation: (Left - Right) / 2
+                val diff = ((left.toInt() - right.toInt()) / 2).coerceIn(-32768, 32767).toShort()
 
-            // Write mono difference to both left and right output channels
-            outputBuffer.putShort(diff)
-            outputBuffer.putShort(diff)
+                outputBuffer.putShort(diff)
+                outputBuffer.putShort(diff)
+            }
         }
 
         inputBuffer.position(limit)

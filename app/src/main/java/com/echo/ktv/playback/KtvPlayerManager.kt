@@ -137,7 +137,7 @@ object KtvPlayerManager {
                         error.printStackTrace()
                         val ctx = appContext
                         if (ctx != null) {
-                            Toast.makeText(ctx, "播放器提示: ${error.message ?: "解码异常"}，自动使用保底音源", Toast.LENGTH_LONG).show()
+                            Toast.makeText(ctx, "播放器提示: ${error.message ?: "解码异常"}，自动切至高保真音频", Toast.LENGTH_SHORT).show()
                         }
                         val current = _currentPlaying.value
                         if (current is PlayableItem.Mv) {
@@ -215,6 +215,11 @@ object KtvPlayerManager {
                     is PlayableItem.Mv -> {
                         KugouApi.getMvUrl(nextItem.mvItem.mvHash) { result ->
                             result.onSuccess { url ->
+                                if (url.endsWith(".mp3") || url.contains("163.com")) {
+                                    appContext?.let {
+                                        Toast.makeText(it, "MV画质源不可用，已自动播放《${nextItem.title}》音频", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                                 startPlayback(url)
                                 downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
                             }
@@ -240,6 +245,9 @@ object KtvPlayerManager {
     }
 
     private fun fallbackToAudioSearch(title: String) {
+        appContext?.let {
+            Toast.makeText(it, "正在为您检索《$title》音频...", Toast.LENGTH_SHORT).show()
+        }
         KugouApi.searchSong(title) { result ->
             result.onSuccess { songs ->
                 if (songs.isNotEmpty()) {
@@ -411,8 +419,14 @@ object KtvPlayerManager {
         val list = _favorites.value.toMutableList()
         if (list.contains(song)) {
             list.remove(song)
+            appContext?.let {
+                Toast.makeText(it, "已取消收藏: ${song.title}", Toast.LENGTH_SHORT).show()
+            }
         } else {
             list.add(song)
+            appContext?.let {
+                Toast.makeText(it, "已添加到收藏: ${song.title}", Toast.LENGTH_SHORT).show()
+            }
         }
         _favorites.value = list
         saveList("favorites", list)
