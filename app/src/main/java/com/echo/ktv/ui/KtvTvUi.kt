@@ -591,6 +591,7 @@ fun PlaybackPreviewCard(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
+                            setSurfaceType(androidx.media3.ui.PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
                             setPlayer(player)
                         }
                     },
@@ -1340,12 +1341,13 @@ fun VideoPlayerOverlay(
                 } else false
             }
     ) {
-        // Player Surface View
+        // Player Surface View (using TextureView so Compose dark overlays don't hide video)
         if (player != null) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         useController = false
+                        setSurfaceType(androidx.media3.ui.PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
                         setPlayer(player)
                     }
                 },
