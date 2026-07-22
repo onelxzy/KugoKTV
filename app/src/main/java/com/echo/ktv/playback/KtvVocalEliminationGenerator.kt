@@ -109,7 +109,7 @@ object KtvVocalEliminationGenerator {
                             outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
 
                             if (channelCount == 2) {
-                                // Process 16-bit Stereo PCM: Center Vocal Cancellation
+                                // Process 16-bit Stereo PCM: Center Vocal Cancellation with +3dB Volume Gain Boost (0.707f)
                                 val pcmData = ByteArray(bufferInfo.size)
                                 outputBuffer.get(pcmData)
                                 val byteBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN)
@@ -118,7 +118,8 @@ object KtvVocalEliminationGenerator {
                                 while (byteBuffer.hasRemaining()) {
                                     val left = byteBuffer.short
                                     val right = byteBuffer.short
-                                    val diff = ((left.toInt() - right.toInt()) / 2).coerceIn(-32768, 32767).toShort()
+                                    val rawDiff = (left.toInt() - right.toInt())
+                                    val diff = (rawDiff * 0.707f).toInt().coerceIn(-32768, 32767).toShort()
                                     outBuffer.putShort(diff)
                                     outBuffer.putShort(diff)
                                 }
