@@ -66,7 +66,7 @@ object KtvTheme {
 fun TvFocusableItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    content: @Composable (isFocused: Boolean) -> Modifier = { Modifier }
+    content: @Composable BoxScope.(isFocused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -98,7 +98,7 @@ fun TvFocusableItem(
             .clip(RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = content(isFocused))
+        content(isFocused)
     }
 }
 
