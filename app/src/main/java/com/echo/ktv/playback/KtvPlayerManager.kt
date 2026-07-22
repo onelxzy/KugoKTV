@@ -2,6 +2,7 @@ package com.echo.ktv.playback
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -134,11 +135,15 @@ object KtvPlayerManager {
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         error.printStackTrace()
+                        val ctx = appContext
+                        if (ctx != null) {
+                            Toast.makeText(ctx, "播放器提示: ${error.message ?: "解码异常"}，自动使用保底音源", Toast.LENGTH_LONG).show()
+                        }
                         val current = _currentPlaying.value
                         if (current is PlayableItem.Mv) {
                             fallbackToAudioSearch(current.title)
                         } else {
-                            playNext()
+                            startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                         }
                     }
                 })
@@ -152,6 +157,10 @@ object KtvPlayerManager {
         list.add(PlayableItem.Mv(mv))
         _playlist.value = list
 
+        appContext?.let {
+            Toast.makeText(it, "已加入点播队列: ${mv.title}", Toast.LENGTH_SHORT).show()
+        }
+
         if (_currentPlaying.value == null) {
             playNext()
         }
@@ -161,6 +170,10 @@ object KtvPlayerManager {
         val list = _playlist.value.toMutableList()
         list.add(PlayableItem.Song(song))
         _playlist.value = list
+
+        appContext?.let {
+            Toast.makeText(it, "已加入点播队列: ${song.title}", Toast.LENGTH_SHORT).show()
+        }
 
         if (_currentPlaying.value == null) {
             playNext()
@@ -217,7 +230,7 @@ object KtvPlayerManager {
                                 downloadAndCache(nextItem.songItem.hash, url, songItem)
                             }
                             result.onFailure {
-                                playNext() // Skip on failure
+                                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                             }
                         }
                     }
@@ -237,14 +250,16 @@ object KtvPlayerManager {
                             downloadAndCache(firstSong.hash, url, firstSong)
                         }
                         urlResult.onFailure {
-                            playNext()
+                            startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                         }
                     }
                 } else {
-                    playNext()
+                    startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                 }
             }
-            result.onFailure { playNext() }
+            result.onFailure {
+                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
+            }
         }
     }
 
@@ -255,8 +270,10 @@ object KtvPlayerManager {
         val cacheFileMp3 = File(cacheDir, "${song.hash.lowercase()}.mp3")
 
         if (cacheFileMp4.exists()) {
+            Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
             startPlayback("file:///" + cacheFileMp4.absolutePath)
         } else if (cacheFileMp3.exists()) {
+            Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
             startPlayback("file:///" + cacheFileMp3.absolutePath)
         } else {
             onUrlNeeded()

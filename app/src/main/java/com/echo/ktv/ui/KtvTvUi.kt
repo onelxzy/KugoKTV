@@ -131,6 +131,28 @@ fun MainTvScreen() {
         QrCodeUtils.generateQrCode("http://$localIp:19985/")
     }
 
+    // Total ordered count = queued + currently playing
+    val totalSelectedCount = playlist.size + (if (currentPlaying != null) 1 else 0)
+
+    // Automatic search execution when searchKeyword changes
+    LaunchedEffect(searchKeyword) {
+        if (searchKeyword.isNotBlank()) {
+            KugouApi.searchMV(searchKeyword) { result ->
+                result.onSuccess { mvs ->
+                    searchMvs = mvs
+                    if (mvs.isEmpty()) {
+                        Toast.makeText(context, "未找到关联歌曲: $searchKeyword", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                result.onFailure { err ->
+                    Toast.makeText(context, "搜索遇到问题: ${err.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        } else {
+            searchMvs = emptyList()
+        }
+    }
+
     // Load initial Hot songs
     LaunchedEffect(Unit) {
         KugouApi.getHotSongs { result ->
@@ -171,7 +193,7 @@ fun MainTvScreen() {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top Action Bar
                 TopBar(
-                    playlistSize = playlist.size,
+                    selectedSize = totalSelectedCount,
                     onSearchClick = { currentTab = "search" },
                     onQueueClick = { currentTab = "queue" },
                     onVocalClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) },
@@ -189,7 +211,7 @@ fun MainTvScreen() {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (currentTab == "home") {
-                    // Home Dashboard layout - fully responsive weight!
+                    // Home Dashboard layout
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -371,20 +393,25 @@ fun MainTvScreen() {
                         when (currentTab) {
                             "songs_list" -> SongsListGrid(listTitle, displaySongsList) { song ->
                                 KtvPlayerManager.addSongToQueue(song)
-                                Toast.makeText(context, "已点: ${song.title}", Toast.LENGTH_SHORT).show()
                             }
                             "category" -> {
                                 if (currentCategoryName.isNotEmpty()) {
                                     SongsListGrid("💬 分类 - $currentCategoryName", displaySongsList) { song ->
                                         KtvPlayerManager.addSongToQueue(song)
-                                        Toast.makeText(context, "已点: ${song.title}", Toast.LENGTH_SHORT).show()
                                     }
                                 } else {
                                     CategorySelectionGrid { category ->
                                         currentCategoryName = category
+                                        Toast.makeText(context, "正在查询分类: $category", Toast.LENGTH_SHORT).show()
                                         KugouApi.searchSong(category) { result ->
                                             result.onSuccess {
                                                 displaySongsList = it
+                                                if (it.isEmpty()) {
+                                                    Toast.makeText(context, "未找到该分类的歌曲", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            result.onFailure { err ->
+                                                Toast.makeText(context, "获取分类失败: ${err.message}", Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
@@ -395,16 +422,21 @@ fun MainTvScreen() {
                                 onKeywordChange = { searchKeyword = it },
                                 mvs = searchMvs,
                                 onSearch = {
-                                    KugouApi.searchMV(searchKeyword) { result ->
-                                        result.onSuccess { searchMvs = it }
+                                    if (searchKeyword.isNotBlank()) {
+                                        Toast.makeText(context, "正在搜索: $searchKeyword", Toast.LENGTH_SHORT).show()
+                                        KugouApi.searchMV(searchKeyword) { result ->
+                                            result.onSuccess { searchMvs = it }
+                                            result.onFailure { err ->
+                                                Toast.makeText(context, "搜索失败: ${err.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     }
                                 },
                                 onSelect = { mv ->
                                     KtvPlayerManager.addMvToQueue(mv)
-                                    Toast.makeText(context, "已点: ${mv.title}", Toast.LENGTH_SHORT).show()
                                 }
                             )
-                            "queue" -> PlaylistQueueContent(playlist)
+                            "queue" -> PlaylistQueueContent(playlist, currentPlaying)
                         }
                     }
                 }
@@ -423,7 +455,7 @@ fun MainTvScreen() {
 
 @Composable
 fun TopBar(
-    playlistSize: Int,
+    selectedSize: Int,
     onSearchClick: () -> Unit,
     onQueueClick: () -> Unit,
     onVocalClick: () -> Unit,
@@ -459,7 +491,7 @@ fun TopBar(
         }
         Spacer(modifier = Modifier.width(8.dp))
         TvFocusableItem(onClick = onQueueClick) { _ ->
-            Text("📋 已点 ($playlistSize)", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+            Text("📋 已点 ($selectedSize)", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
         }
         Spacer(modifier = Modifier.width(8.dp))
         TvFocusableItem(onClick = onQrClick) { _ ->
@@ -870,7 +902,6 @@ fun SearchMvContent(
                     TvFocusableItem(
                         onClick = {
                             onKeywordChange(keyword + letter)
-                            onSearch()
                         },
                         modifier = Modifier.height(38.dp)
                     ) { isFocused ->
@@ -902,7 +933,6 @@ fun SearchMvContent(
                     onClick = {
                         if (keyword.isNotEmpty()) {
                             onKeywordChange(keyword.dropLast(1))
-                            onSearch()
                         }
                     },
                     modifier = Modifier
@@ -922,7 +952,6 @@ fun SearchMvContent(
                 TvFocusableItem(
                     onClick = {
                         onKeywordChange("")
-                        onSearch()
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -994,7 +1023,12 @@ fun SearchMvContent(
                         .background(KtvTheme.CardBg.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("请输入首字母搜索歌曲，如 'ZJL' 搜周杰伦，'QT' 搜晴天", color = KtvTheme.TextMuted, fontSize = 16.sp)
+                    Text(
+                        if (keyword.isBlank()) "请输入首字母搜索歌曲，如 'ZJL' 搜周杰伦，'QT' 搜晴天"
+                        else "搜索中，或未找到关联歌曲...",
+                        color = KtvTheme.TextMuted,
+                        fontSize = 16.sp
+                    )
                 }
             } else {
                 LazyVerticalGrid(
@@ -1049,14 +1083,31 @@ fun SearchMvContent(
 }
 
 @Composable
-fun PlaylistQueueContent(list: List<PlayableItem>) {
+fun PlaylistQueueContent(list: List<PlayableItem>, currentPlaying: PlayableItem?) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("🎶 已点点播队列", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, modifier = Modifier.padding(bottom = 16.dp))
-        if (list.isEmpty()) {
+        
+        if (currentPlaying != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("▶ 正在播放", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = KtvTheme.Accent)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(currentPlaying.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(currentPlaying.artist, fontSize = 14.sp, color = KtvTheme.TextMuted)
+                }
+            }
+        }
+
+        if (list.isEmpty() && currentPlaying == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("点歌队列空空如也，请从手机扫码或搜索添加歌曲", color = KtvTheme.TextMuted)
             }
-        } else {
+        } else if (list.isNotEmpty()) {
+            Text("等待播放 (${list.size}):", fontSize = 16.sp, color = KtvTheme.TextMuted, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(list) { item ->
                     Card(
