@@ -3,10 +3,11 @@ package com.echo.ktv.playback
 import android.content.Context
 import android.content.SharedPreferences
 import android.widget.Toast
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.SongItem
@@ -52,6 +53,11 @@ object KtvPlayerManager {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    // Active playback URLs for seamless 原唱 / 伴奏 switching
+    private var activeOriginalUrl: String = ""
+    private var activeAccFileUrl: String = ""
+    private var activeHash: String = ""
 
     // Playlist Queue
     private val _playlist = MutableStateFlow<List<PlayableItem>>(emptyList())
@@ -132,7 +138,7 @@ object KtvPlayerManager {
                                 Toast.makeText(ctx, "正在为您检索《${current.title}》高保真音频", Toast.LENGTH_SHORT).show()
                             }
                             KugouApi.getSongUrlByTitle(current.title) { res ->
-                                res.onSuccess { url -> startPlayback(url) }
+                                res.onSuccess { url -> startPlayback(url, current.title) }
                             }
                         }
                     }
@@ -190,34 +196,35 @@ object KtvPlayerManager {
         if (list.isEmpty()) {
             player?.stop()
             _currentPlaying.value = null
+            activeOriginalUrl = ""
+            activeAccFileUrl = ""
             return
         }
 
         val nextItem = list.removeAt(0)
         _playlist.value = list
         _currentPlaying.value = nextItem
+        activeAccFileUrl = ""
 
-        // Add to history
         val songItem = when (nextItem) {
             is PlayableItem.Song -> nextItem.songItem
             is PlayableItem.Mv -> SongItem(nextItem.mvItem.title, nextItem.mvItem.artist, nextItem.mvItem.mvHash, "mv", nextItem.mvItem.duration)
         }
+        activeHash = songItem.hash.ifEmpty { nextItem.title }
         addToHistory(songItem)
 
-        // Check cache first
         checkCacheAndPlay(songItem) {
-            // Not cached, fetch from network
             scope.launch {
                 when (nextItem) {
                     is PlayableItem.Mv -> {
                         KugouApi.getMvUrl(nextItem.mvItem.mvHash, titleFallback = nextItem.title) { result ->
                             result.onSuccess { url ->
-                                startPlayback(url)
+                                startPlayback(url, activeHash)
                                 downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
                             }
                             result.onFailure {
                                 KugouApi.getSongUrlByTitle(nextItem.title) { res ->
-                                    res.onSuccess { url -> startPlayback(url) }
+                                    res.onSuccess { url -> startPlayback(url, activeHash) }
                                 }
                             }
                         }
@@ -225,12 +232,12 @@ object KtvPlayerManager {
                     is PlayableItem.Song -> {
                         KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
                             result.onSuccess { url ->
-                                startPlayback(url)
+                                startPlayback(url, activeHash)
                                 downloadAndCache(nextItem.songItem.hash, url, songItem)
                             }
                             result.onFailure {
                                 KugouApi.getSongUrlByTitle(nextItem.songItem.title) { res ->
-                                    res.onSuccess { url -> startPlayback(url) }
+                                    res.onSuccess { url -> startPlayback(url, activeHash) }
                                 }
                             }
                         }
@@ -248,10 +255,10 @@ object KtvPlayerManager {
 
         if (cacheFileMp4.exists()) {
             Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
-            startPlayback("file:///" + cacheFileMp4.absolutePath)
+            startPlayback("file:///" + cacheFileMp4.absolutePath, song.hash)
         } else if (cacheFileMp3.exists()) {
             Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
-            startPlayback("file:///" + cacheFileMp3.absolutePath)
+            startPlayback("file:///" + cacheFileMp3.absolutePath, song.hash)
         } else {
             onUrlNeeded()
         }
@@ -293,7 +300,11 @@ object KtvPlayerManager {
         }
     }
 
-    private fun startPlayback(url: String) {
+    private fun startPlayback(url: String, hash: String = "") {
+        activeOriginalUrl = url
+        activeAccFileUrl = ""
+        val context = appContext
+
         scope.launch(Dispatchers.Main) {
             player?.let { p ->
                 p.stop()
@@ -305,12 +316,16 @@ object KtvPlayerManager {
                 p.play()
             }
         }
-    }
 
-    fun togglePlayPause() {
-        scope.launch(Dispatchers.Main) {
-            player?.let { p ->
-                if (p.isPlaying) p.pause() else p.play()
+        // Trigger background accompaniment generation
+        if (context != null && hash.isNotEmpty()) {
+            KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash) { result ->
+                result.onSuccess { accFile ->
+                    activeAccFileUrl = "file:///" + accFile.absolutePath
+                    if (_isVocalEliminated.value) {
+                        applyVocalEliminationSwitch(true)
+                    }
+                }
             }
         }
     }
@@ -318,6 +333,67 @@ object KtvPlayerManager {
     fun setVocalElimination(enabled: Boolean) {
         scope.launch(Dispatchers.Main) {
             _isVocalEliminated.value = enabled
+            applyVocalEliminationSwitch(enabled)
+        }
+    }
+
+    private fun applyVocalEliminationSwitch(enabled: Boolean) {
+        val p = player ?: return
+        val currentPos = p.currentPosition
+        val wasPlaying = p.isPlaying
+        val context = appContext
+
+        if (enabled) {
+            if (activeAccFileUrl.isNotEmpty()) {
+                val current = _currentPlaying.value
+                if (current is PlayableItem.Mv && activeOriginalUrl.isNotEmpty()) {
+                    // MV: Combine MV Video stream + Accompaniment Audio stream with MergingMediaSource
+                    val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                        .setUserAgent("Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+                        .setAllowCrossProtocolRedirects(true)
+                    val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context!!, httpDataSourceFactory)
+
+                    val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri(activeOriginalUrl))
+                    val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri(activeAccFileUrl))
+
+                    val mergedSource = MergingMediaSource(videoSource, audioSource)
+                    p.setMediaSource(mergedSource)
+                } else {
+                    // Audio Song: Switch to Accompaniment WAV audio file
+                    p.setMediaItem(MediaItem.fromUri(activeAccFileUrl))
+                }
+                p.prepare()
+                p.seekTo(currentPos)
+                if (wasPlaying) p.play()
+                context?.let {
+                    Toast.makeText(it, "🎤 已切至【伴奏模式】", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                context?.let {
+                    Toast.makeText(it, "⏳ 正在合成伴奏中，稍后将自动切换...", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            // Revert to 原唱
+            if (activeOriginalUrl.isNotEmpty()) {
+                p.setMediaItem(MediaItem.fromUri(activeOriginalUrl))
+                p.prepare()
+                p.seekTo(currentPos)
+                if (wasPlaying) p.play()
+                context?.let {
+                    Toast.makeText(it, "🎤 已切至【原唱模式】", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun togglePlayPause() {
+        scope.launch(Dispatchers.Main) {
+            player?.let { p ->
+                if (p.isPlaying) p.pause() else p.play()
+            }
         }
     }
 
