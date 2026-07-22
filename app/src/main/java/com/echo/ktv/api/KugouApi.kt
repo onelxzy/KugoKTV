@@ -39,8 +39,8 @@ object KugouApi {
     private const val mid = "2882303761517560020"
     private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
 
-    // Guaranteed working 200 OK fallback audio URL
-    private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=188214.mp3" // 张学友 - 吻别
+    // Guaranteed working 200 OK fallback audio URL (晴天)
+    private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=1436709403.mp3"
 
     // Real Direct Audio URL Mapping for popular songs
     private val directUrlMap = mapOf(

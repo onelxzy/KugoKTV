@@ -73,6 +73,7 @@ dependencies {
     val media3Version = "1.1.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-extractor:$media3Version")
 
     // Ktor Server (for Mobile Web Ordering Service)
     val ktorVersion = "2.3.5"

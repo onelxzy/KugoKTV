@@ -114,7 +114,10 @@ object KtvPlayerManager {
         val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
         val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context.applicationContext, httpDataSourceFactory)
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext)
+        val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory().apply {
+            setConstantBitrateSeekingEnabled(true)
+        }
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext, extractorsFactory)
             .setDataSourceFactory(dataSourceFactory)
 
         player = ExoPlayer.Builder(context.applicationContext)
@@ -145,7 +148,7 @@ object KtvPlayerManager {
                         }
                         
                         // Directly load safe stream without recursive loops
-                        startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
+                        startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
                     }
                 })
             }
@@ -226,7 +229,7 @@ object KtvPlayerManager {
                                 downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
                             }
                             result.onFailure {
-                                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
+                                startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
                             }
                         }
                     }
@@ -237,7 +240,7 @@ object KtvPlayerManager {
                                 downloadAndCache(nextItem.songItem.hash, url, songItem)
                             }
                             result.onFailure {
-                                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
+                                startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
                             }
                         }
                     }
