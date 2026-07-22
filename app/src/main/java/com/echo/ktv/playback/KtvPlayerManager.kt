@@ -190,6 +190,10 @@ object KtvPlayerManager {
         }
     }
 
+    private fun cleanSearchQuery(text: String): String {
+        return text.replace(Regex("\\(.*\\)|（.*）|\\[.*\\]"), "").trim()
+    }
+
     fun playNext() {
         isHandlingPlayerError = false
         val list = _playlist.value.toMutableList()
@@ -213,57 +217,50 @@ object KtvPlayerManager {
         activeHash = songItem.hash.ifEmpty { nextItem.title }
         addToHistory(songItem)
 
-        checkCacheAndPlay(songItem) {
-            scope.launch {
-                // Auto-prefer MV search for any song or MV item
-                KugouApi.searchMV(nextItem.title) { result ->
-                    result.onSuccess { mvList ->
-                        val matchedMv = mvList.firstOrNull { it.mvHash.length >= 32 }
-                        if (matchedMv != null) {
-                            // Official 1080P MV video stream found!
-                            _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
-                            KugouApi.getMvUrl(matchedMv.mvHash, titleFallback = nextItem.title) { mvUrlRes ->
-                                mvUrlRes.onSuccess { videoUrl ->
-                                    startPlayback(videoUrl, activeHash)
-                                    downloadAndCache(matchedMv.mvHash, videoUrl, songItem)
+        val cleanTitle = cleanSearchQuery(nextItem.title)
+        val cleanArtist = cleanSearchQuery(nextItem.artist)
+        val searchKeyword = if (cleanArtist.isNotEmpty()) "$cleanTitle $cleanArtist" else cleanTitle
+
+        appContext?.let {
+            Toast.makeText(it, "🔍 正在为您检索《$cleanTitle》1080P 高清 MV...", Toast.LENGTH_SHORT).show()
+        }
+
+        scope.launch {
+            KugouApi.searchMV(searchKeyword) { result ->
+                result.onSuccess { mvList ->
+                    val matchedMv = mvList.firstOrNull { it.mvHash.length >= 32 }
+                    if (matchedMv != null) {
+                        _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
+                        KugouApi.getMvUrl(matchedMv.mvHash, titleFallback = cleanTitle) { mvUrlRes ->
+                            mvUrlRes.onSuccess { videoUrl ->
+                                appContext?.let {
+                                    Toast.makeText(it, "🎬 成功加载 1080P 高清 MV: $cleanTitle", Toast.LENGTH_SHORT).show()
                                 }
-                                mvUrlRes.onFailure {
-                                    playAudioFallback(nextItem, songItem)
-                                }
+                                startPlayback(videoUrl, activeHash)
+                                downloadAndCache(matchedMv.mvHash, videoUrl, songItem)
                             }
-                        } else {
-                            playAudioFallback(nextItem, songItem)
+                            mvUrlRes.onFailure {
+                                playAudioFallback(cleanTitle, songItem)
+                            }
                         }
+                    } else {
+                        playAudioFallback(cleanTitle, songItem)
                     }
-                    result.onFailure {
-                        playAudioFallback(nextItem, songItem)
-                    }
+                }
+                result.onFailure {
+                    playAudioFallback(cleanTitle, songItem)
                 }
             }
         }
     }
 
-    private fun playAudioFallback(nextItem: PlayableItem, songItem: SongItem) {
+    private fun playAudioFallback(cleanTitle: String, songItem: SongItem) {
         _currentPlaying.value = PlayableItem.Song(songItem)
-        KugouApi.getSongUrlByTitle(nextItem.title) { res ->
-            res.onSuccess { url -> startPlayback(url, activeHash) }
+        appContext?.let {
+            Toast.makeText(it, "🎵 已加载全长原唱音频: $cleanTitle", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun checkCacheAndPlay(song: SongItem, onUrlNeeded: () -> Unit) {
-        val context = appContext ?: return onUrlNeeded()
-        val cacheDir = File(context.filesDir, "ktv_cache")
-        val cacheFileMp4 = File(cacheDir, "${song.hash.lowercase()}.mp4")
-        val cacheFileMp3 = File(cacheDir, "${song.hash.lowercase()}.mp3")
-
-        if (cacheFileMp4.exists()) {
-            Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
-            startPlayback("file:///" + cacheFileMp4.absolutePath, song.hash)
-        } else if (cacheFileMp3.exists()) {
-            Toast.makeText(context, "播放本地缓存: ${song.title}", Toast.LENGTH_SHORT).show()
-            startPlayback("file:///" + cacheFileMp3.absolutePath, song.hash)
-        } else {
-            onUrlNeeded()
+        KugouApi.getSongUrlByTitle(cleanTitle) { res ->
+            res.onSuccess { url -> startPlayback(url, activeHash) }
         }
     }
 
