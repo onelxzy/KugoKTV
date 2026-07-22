@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
@@ -741,19 +743,24 @@ fun TallFeatureCard(
                 .padding(16.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                Text(
-                    text = title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔥", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = title,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "HOT SONGS",
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.6f)
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -1270,7 +1277,16 @@ fun VideoPlayerOverlay(
     var showControls by remember { mutableStateOf(true) }
     var currentPositionMs by remember { mutableStateOf(0L) }
     var totalDurationMs by remember { mutableStateOf(0L) }
-    val focusManager = LocalFocusManager.current
+
+    val infiniteTransition = rememberInfiniteTransition()
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
 
     LaunchedEffect(isPlaying) {
         while (true) {
@@ -1291,7 +1307,6 @@ fun VideoPlayerOverlay(
                     showControls = true
                     when (keyEvent.key) {
                         Key.DirectionLeft -> {
-                            // D-pad Left: Seek backward 10s
                             player?.let { p ->
                                 val newPos = (p.currentPosition - 10000).coerceAtLeast(0L)
                                 p.seekTo(newPos)
@@ -1300,7 +1315,6 @@ fun VideoPlayerOverlay(
                             true
                         }
                         Key.DirectionRight -> {
-                            // D-pad Right: Seek forward 10s
                             player?.let { p ->
                                 val newPos = (p.currentPosition + 10000).coerceAtMost(p.duration.coerceAtLeast(0L))
                                 p.seekTo(newPos)
@@ -1332,6 +1346,80 @@ fun VideoPlayerOverlay(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+
+        // Vinyl Disc animation for Audio songs
+        if (item is PlayableItem.Song) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0xFF2C1B4D), Color(0xFF070A13))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 40.dp)
+                ) {
+                    // Rotating Vinyl Disc
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .rotate(if (isPlaying) angle else 0f)
+                            .background(Color(0xFF1E1E1E), CircleShape)
+                            .border(6.dp, Color(0xFF333333), CircleShape)
+                            .border(2.dp, KtvTheme.Accent, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(100.dp)
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(60.dp)
+                                .background(KtvTheme.AccentGradient, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🎵", fontSize = 28.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = if (isVocalEliminated) "正在伴奏模式..." else "正在原唱播放...",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = KtvTheme.Accent
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = item.title,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.artist,
+                        fontSize = 18.sp,
+                        color = KtvTheme.TextMuted,
+                        modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
         // Overlay Controls
@@ -1385,33 +1473,6 @@ fun VideoPlayerOverlay(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text("💡 方向键左右可快进快退", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
                     }
-                }
-
-                // Middle Big Title
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 40.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = item.title,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = item.artist,
-                        fontSize = 20.sp,
-                        color = KtvTheme.TextMuted,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
                 }
 
                 // Bottom Progress Bar and Controls

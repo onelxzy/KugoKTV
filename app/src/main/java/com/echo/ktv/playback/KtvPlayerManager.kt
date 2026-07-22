@@ -112,7 +112,7 @@ object KtvPlayerManager {
         }
 
         val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            .setUserAgent("Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
             .setAllowCrossProtocolRedirects(true)
 
         val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context.applicationContext, httpDataSourceFactory)
@@ -317,20 +317,11 @@ object KtvPlayerManager {
             player?.let { p ->
                 p.stop()
                 p.clearMediaItems()
-                val mediaItemBuilder = MediaItem.Builder().setUri(url)
-                if (url.contains(".mkv")) {
-                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MATROSKA)
-                } else if (url.contains(".mp4") || url.contains("mv")) {
-                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP4)
-                } else if (url.contains(".mp3") || url.contains("163.com") || url.contains("126.net")) {
-                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.AUDIO_MPEG)
-                }
-                val mediaItem = mediaItemBuilder.build()
+                val mediaItem = MediaItem.fromUri(url)
                 p.setMediaItem(mediaItem)
                 p.volume = _musicVolume.value
                 p.prepare()
                 p.play()
-                setVocalElimination(_isVocalEliminated.value)
             }
         }
     }
@@ -347,12 +338,6 @@ object KtvPlayerManager {
         scope.launch(Dispatchers.Main) {
             _isVocalEliminated.value = enabled
             vocalEliminator.setEliminateVocal(enabled)
-            player?.let { p ->
-                if (p.playbackState != Player.STATE_IDLE) {
-                    val parameters = p.playbackParameters
-                    p.playbackParameters = parameters
-                }
-            }
         }
     }
 
