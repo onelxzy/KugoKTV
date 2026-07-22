@@ -47,7 +47,7 @@ object KugouApi {
     private const val mid = "2882303761517560020"
     private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
 
-    // Guaranteed working 200 OK fallback audio URL (晴天)
+    // Guaranteed working full-length fallback audio URL (晴天)
     private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=2652820720.mp3"
 
     private fun JsonObject.getSafeString(vararg keys: String): String {
@@ -117,7 +117,7 @@ object KugouApi {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val data = json.getAsJsonObject("data")
-                    val info = data?.getAsJsonArray("info") ?: JsonArray()
+                    val info = data?.getAsJsonArray("info") ?: data?.getAsJsonArray("lists") ?: JsonArray()
                     
                     val result = mutableListOf<SongItem>()
                     for (element in info) {
@@ -249,19 +249,21 @@ object KugouApi {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val data = json.getAsJsonObject("data")
-                    val info = data?.getAsJsonArray("info") ?: JsonArray()
+                    val dataObj = json.getAsJsonObject("data")
+                    val info = dataObj?.getAsJsonArray("lists")
+                        ?: dataObj?.getAsJsonArray("info")
+                        ?: JsonArray()
                     
                     val result = mutableListOf<MvItem>()
                     for (element in info) {
                         if (!element.isJsonObject) continue
                         val itemObj = element.asJsonObject
                         
-                        val title = itemObj.getSafeString("filename", "mvname", "title", "MvName", "FileName")
-                        val artist = itemObj.getSafeString("singername", "artist", "SingerName")
-                        val mvHash = itemObj.getSafeString("hash", "mvhash", "mv_hash", "FileHash", "MvHash")
-                        val duration = itemObj.getSafeInt("duration", default = 240)
-                        val imgUrl = itemObj.getSafeString("imgurl", "pic", "ImgUrl")
+                        val title = itemObj.getSafeString("MvName", "filename", "mvname", "title", "FileName")
+                        val artist = itemObj.getSafeString("SingerName", "singername", "artist")
+                        val mvHash = itemObj.getSafeString("MvHash", "hash", "mvhash", "mv_hash", "FileHash")
+                        val duration = itemObj.getSafeInt("Duration", "duration", default = 240)
+                        val imgUrl = itemObj.getSafeString("Pic", "imgurl", "pic")
                         
                         if (mvHash.isNotEmpty()) {
                             result.add(MvItem(title, artist, mvHash, duration, imgUrl))
@@ -286,8 +288,8 @@ object KugouApi {
 
     private fun getFallbackMvs(keyword: String): List<MvItem> {
         return listOf(
-            MvItem("$keyword (KTV高清版)", "华语群星", "f0a8d672834b6b6697a4a2a4b8df66a3", 260, ""),
-            MvItem("$keyword (伴奏现场)", "热门歌手", "c2d3a672834b6b6697a4a2a4b8df77a2", 280, "")
+            MvItem("$keyword (KTV高清版)", "华语群星", "732D3DB4E204E44D2753FD38D4A8523B", 260, ""),
+            MvItem("$keyword (伴奏现场)", "热门歌手", "3624C769CF86C192705A0BCE73A5BC55", 280, "")
         )
     }
 
@@ -340,9 +342,9 @@ object KugouApi {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (titleFallback.isNotEmpty()) {
-                    getSongUrlByTitle(titleFallback, callback)
+                    searchMvByTitleAndFetchUrl(titleFallback, callback)
                 } else {
-                    getSongUrl(lowerHash, "", callback)
+                    getSongUrlByTitle(titleFallback, callback)
                 }
             }
 
@@ -371,17 +373,103 @@ object KugouApi {
                         mainHandler.post { callback(Result.success(finalUrl)) }
                     } else {
                         if (titleFallback.isNotEmpty()) {
-                            getSongUrlByTitle(titleFallback, callback)
+                            searchMvByTitleAndFetchUrl(titleFallback, callback)
                         } else {
-                            getSongUrl(lowerHash, "", callback)
+                            getSongUrlByTitle(titleFallback, callback)
                         }
                     }
                 } catch (e: Exception) {
                     if (titleFallback.isNotEmpty()) {
-                        getSongUrlByTitle(titleFallback, callback)
+                        searchMvByTitleAndFetchUrl(titleFallback, callback)
                     } else {
-                        getSongUrl(lowerHash, "", callback)
+                        getSongUrlByTitle(titleFallback, callback)
                     }
+                }
+            }
+        })
+    }
+
+    private fun searchMvByTitleAndFetchUrl(title: String, callback: (Result<String>) -> Unit) {
+        searchMV(title) { result ->
+            result.onSuccess { mvList ->
+                val firstMv = mvList.firstOrNull { it.mvHash.length >= 32 }
+                if (firstMv != null) {
+                    getMvUrlDirect(firstMv.mvHash) { urlResult ->
+                        urlResult.onSuccess { url -> callback(Result.success(url)) }
+                        urlResult.onFailure { getSongUrlByTitle(title, callback) }
+                    }
+                } else {
+                    getSongUrlByTitle(title, callback)
+                }
+            }
+            result.onFailure {
+                getSongUrlByTitle(title, callback)
+            }
+        }
+    }
+
+    private fun getMvUrlDirect(mvHash: String, callback: (Result<String>) -> Unit) {
+        val lowerHash = mvHash.lowercase()
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val key = SignatureUtils.signKey(lowerHash, mid)
+
+        val urlBuilder = "https://gateway.kugou.com/v2/interface/index".toHttpUrl().newBuilder().apply {
+            addQueryParameter("backupdomain", "1")
+            addQueryParameter("cmd", "123")
+            addQueryParameter("ext", "mp4")
+            addQueryParameter("ismp3", "0")
+            addQueryParameter("hash", lowerHash)
+            addQueryParameter("pid", "1")
+            addQueryParameter("type", "1")
+            addQueryParameter("key", key)
+            addQueryParameter("appid", SignatureUtils.APP_ID)
+            addQueryParameter("clientver", SignatureUtils.CLIENT_VER)
+            addQueryParameter("clienttime", clientTime)
+            addQueryParameter("signature", SignatureUtils.signatureAndroidParams(mapOf(
+                "backupdomain" to "1",
+                "cmd" to "123",
+                "ext" to "mp4",
+                "ismp3" to "0",
+                "hash" to lowerHash,
+                "pid" to "1",
+                "type" to "1",
+                "key" to key,
+                "appid" to SignatureUtils.APP_ID,
+                "clientver" to SignatureUtils.CLIENT_VER,
+                "clienttime" to clientTime
+            )))
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .headers(getCommonHeaders(clientTime))
+            .addHeader("x-router", "trackermv.kugou.com")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val data = json.getAsJsonObject("data")
+                    val hashObj = data?.getAsJsonObject(lowerHash)
+                    var downurl = hashObj?.get("downurl")?.asString
+                    if (downurl.isNullOrEmpty()) {
+                        downurl = hashObj?.getAsJsonArray("backupdownurl")?.get(0)?.asString
+                    }
+                    if (!downurl.isNullOrEmpty()) {
+                        downurl = downurl.replace("\\/", "/")
+                        val finalUrl = downurl
+                        mainHandler.post { callback(Result.success(finalUrl)) }
+                    } else {
+                        mainHandler.post { callback(Result.failure(Exception("No downurl"))) }
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.failure(e)) }
                 }
             }
         })
@@ -403,7 +491,7 @@ object KugouApi {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
                     val url = json.get("url")?.asString
-                    if (!url.isNullOrEmpty()) {
+                    if (!url.isNullOrEmpty() && !url.contains("err.html")) {
                         mainHandler.post { callback(Result.success(url)) }
                     } else {
                         fallbackToGatewaySongUrl(lowerHash, albumAudioId, callback)
