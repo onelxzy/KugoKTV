@@ -317,7 +317,15 @@ object KtvPlayerManager {
             player?.let { p ->
                 p.stop()
                 p.clearMediaItems()
-                val mediaItem = MediaItem.fromUri(url)
+                val mediaItemBuilder = MediaItem.Builder().setUri(url)
+                if (url.contains(".mkv")) {
+                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MATROSKA)
+                } else if (url.contains(".mp4") || url.contains("mv")) {
+                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP4)
+                } else if (url.contains(".mp3") || url.contains("163.com") || url.contains("126.net")) {
+                    mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.AUDIO_MPEG)
+                }
+                val mediaItem = mediaItemBuilder.build()
                 p.setMediaItem(mediaItem)
                 p.volume = _musicVolume.value
                 p.prepare()
