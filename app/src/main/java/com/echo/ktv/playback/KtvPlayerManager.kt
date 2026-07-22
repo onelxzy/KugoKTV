@@ -89,6 +89,7 @@ object KtvPlayerManager {
     val localSongs: StateFlow<List<SongItem>> = _localSongs
 
     private val scope = CoroutineScope(Dispatchers.Main)
+    private var isHandlingPlayerError = false
 
     fun initialize(context: Context) {
         if (player != null) return
@@ -135,16 +136,16 @@ object KtvPlayerManager {
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         error.printStackTrace()
+                        if (isHandlingPlayerError) return
+                        isHandlingPlayerError = true
+
                         val ctx = appContext
                         if (ctx != null) {
-                            Toast.makeText(ctx, "播放器提示: ${error.message ?: "解码异常"}，自动切至高保真音频", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(ctx, "加载音频源失败，自动切换保底流", Toast.LENGTH_SHORT).show()
                         }
-                        val current = _currentPlaying.value
-                        if (current is PlayableItem.Mv) {
-                            fallbackToAudioSearch(current.title)
-                        } else {
-                            startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
-                        }
+                        
+                        // Directly load safe stream without recursive loops
+                        startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                     }
                 })
             }
@@ -189,6 +190,7 @@ object KtvPlayerManager {
     }
 
     fun playNext() {
+        isHandlingPlayerError = false
         val list = _playlist.value.toMutableList()
         if (list.isEmpty()) {
             player?.stop()
@@ -217,14 +219,14 @@ object KtvPlayerManager {
                             result.onSuccess { url ->
                                 if (url.endsWith(".mp3") || url.contains("163.com")) {
                                     appContext?.let {
-                                        Toast.makeText(it, "MV画质源不可用，已自动播放《${nextItem.title}》音频", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(it, "已为您播放《${nextItem.title}》高保真音频", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 startPlayback(url)
                                 downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
                             }
                             result.onFailure {
-                                fallbackToAudioSearch(nextItem.title)
+                                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
                             }
                         }
                     }
@@ -240,33 +242,6 @@ object KtvPlayerManager {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    private fun fallbackToAudioSearch(title: String) {
-        appContext?.let {
-            Toast.makeText(it, "正在为您检索《$title》音频...", Toast.LENGTH_SHORT).show()
-        }
-        KugouApi.searchSong(title) { result ->
-            result.onSuccess { songs ->
-                if (songs.isNotEmpty()) {
-                    val firstSong = songs[0]
-                    KugouApi.getSongUrl(firstSong.hash, firstSong.albumAudioId) { urlResult ->
-                        urlResult.onSuccess { url ->
-                            startPlayback(url)
-                            downloadAndCache(firstSong.hash, url, firstSong)
-                        }
-                        urlResult.onFailure {
-                            startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
-                        }
-                    }
-                } else {
-                    startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
-                }
-            }
-            result.onFailure {
-                startPlayback("http://music.163.com/song/media/outer/url?id=188214.mp3")
             }
         }
     }

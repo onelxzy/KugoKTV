@@ -78,7 +78,7 @@ object KugouApi {
             .add("dfid", dfid)
             .add("mid", mid)
             .add("clienttime", clientTime)
-            .add("clientver", "11430")
+            .add("clientver", "20489")
             .add("appid", "1005")
             .add("kg-rc", "1")
             .add("kg-thash", "5d816a0")
@@ -233,27 +233,41 @@ object KugouApi {
     }
 
     fun getMvUrl(mvHash: String, callback: (Result<String>) -> Unit) {
-        val directUrl = directUrlMap[mvHash.lowercase()]
+        val lowerHash = mvHash.lowercase()
+        val directUrl = directUrlMap[lowerHash]
         if (directUrl != null) {
             mainHandler.post { callback(Result.success(directUrl)) }
             return
         }
 
         val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val key = SignatureUtils.signKey(mvHash.lowercase(), mid)
+        val key = SignatureUtils.signKey(lowerHash, mid)
 
         val urlBuilder = "https://gateway.kugou.com/v2/interface/index".toHttpUrl().newBuilder().apply {
             addQueryParameter("backupdomain", "1")
             addQueryParameter("cmd", "123")
             addQueryParameter("ext", "mp4")
             addQueryParameter("ismp3", "0")
-            addQueryParameter("hash", mvHash.lowercase())
+            addQueryParameter("hash", lowerHash)
             addQueryParameter("pid", "1")
             addQueryParameter("type", "1")
             addQueryParameter("key", key)
             addQueryParameter("appid", SignatureUtils.APP_ID)
             addQueryParameter("clientver", SignatureUtils.CLIENT_VER)
             addQueryParameter("clienttime", clientTime)
+            addQueryParameter("signature", SignatureUtils.signatureAndroidParams(mapOf(
+                "backupdomain" to "1",
+                "cmd" to "123",
+                "ext" to "mp4",
+                "ismp3" to "0",
+                "hash" to lowerHash,
+                "pid" to "1",
+                "type" to "1",
+                "key" to key,
+                "appid" to SignatureUtils.APP_ID,
+                "clientver" to SignatureUtils.CLIENT_VER,
+                "clienttime" to clientTime
+            )))
         }
 
         val request = Request.Builder()
@@ -264,47 +278,59 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                // Fallback to song audio stream instead of random video
-                getSongUrl(mvHash, "", callback)
+                getSongUrl(lowerHash, "", callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val body = response.body?.string() ?: ""
                     val json = gson.fromJson(body, JsonObject::class.java)
-                    val mvdata = json.getAsJsonObject("mvdata")
-                    var downurl = mvdata?.getAsJsonObject("le")?.get("downurl")?.asString
-                        ?: mvdata?.getAsJsonObject("rq")?.get("downurl")?.asString
-                        ?: mvdata?.getAsJsonObject("sq")?.get("downurl")?.asString
-                        ?: json.get("mvUrl")?.asString
+                    
+                    // Match EchoMusic v2/interface/index JSON response format: json.data[hash].downurl
+                    val data = json.getAsJsonObject("data")
+                    val hashObj = data?.getAsJsonObject(lowerHash)
+                    var downurl = hashObj?.get("downurl")?.asString
+                    if (downurl.isNullOrEmpty()) {
+                        downurl = hashObj?.getAsJsonArray("backupdownurl")?.get(0)?.asString
+                    }
+                    
+                    if (downurl.isNullOrEmpty()) {
+                        // Fallback check for mvdata / mvUrl
+                        val mvdata = json.getAsJsonObject("mvdata")
+                        downurl = mvdata?.getAsJsonObject("le")?.get("downurl")?.asString
+                            ?: mvdata?.getAsJsonObject("rq")?.get("downurl")?.asString
+                            ?: json.get("mvUrl")?.asString
+                    }
                     
                     if (!downurl.isNullOrEmpty()) {
                         downurl = downurl.replace("\\/", "/")
-                        mainHandler.post { callback(Result.success(downurl)) }
+                        val finalUrl = downurl
+                        mainHandler.post { callback(Result.success(finalUrl)) }
                     } else {
-                        getSongUrl(mvHash, "", callback)
+                        getSongUrl(lowerHash, "", callback)
                     }
                 } catch (e: Exception) {
-                    getSongUrl(mvHash, "", callback)
+                    getSongUrl(lowerHash, "", callback)
                 }
             }
         })
     }
 
     fun getSongUrl(hash: String, albumAudioId: String, callback: (Result<String>) -> Unit) {
-        val directUrl = directUrlMap[hash.lowercase()]
+        val lowerHash = hash.lowercase()
+        val directUrl = directUrlMap[lowerHash]
         if (directUrl != null) {
             mainHandler.post { callback(Result.success(directUrl)) }
             return
         }
 
         // Try KuGou mobile getSongInfo endpoint first
-        val infoUrl = "http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${hash.lowercase()}"
+        val infoUrl = "http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=$lowerHash"
         val infoRequest = Request.Builder().url(infoUrl).build()
 
         client.newCall(infoRequest).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                fallbackToGatewaySongUrl(hash, albumAudioId, callback)
+                fallbackToGatewaySongUrl(lowerHash, albumAudioId, callback)
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -315,10 +341,10 @@ object KugouApi {
                     if (!url.isNullOrEmpty()) {
                         mainHandler.post { callback(Result.success(url)) }
                     } else {
-                        fallbackToGatewaySongUrl(hash, albumAudioId, callback)
+                        fallbackToGatewaySongUrl(lowerHash, albumAudioId, callback)
                     }
                 } catch (e: Exception) {
-                    fallbackToGatewaySongUrl(hash, albumAudioId, callback)
+                    fallbackToGatewaySongUrl(lowerHash, albumAudioId, callback)
                 }
             }
         })
@@ -350,6 +376,28 @@ object KugouApi {
             addQueryParameter("key", key)
             addQueryParameter("appid", SignatureUtils.APP_ID)
             addQueryParameter("clienttime", clientTime)
+            addQueryParameter("signature", SignatureUtils.signatureAndroidParams(mapOf(
+                "album_id" to "0",
+                "area_code" to "1",
+                "hash" to lowerHash,
+                "ssa_flag" to "is_fromtrack",
+                "version" to "11430",
+                "page_id" to "151369488",
+                "quality" to "128",
+                "album_audio_id" to if (albumAudioId.isBlank()) "0" else albumAudioId,
+                "behavior" to "play",
+                "pid" to "2",
+                "cmd" to "26",
+                "pidversion" to "3001",
+                "IsFreePart" to "0",
+                "ppage_id" to "463467626,350369493,788954147",
+                "cdnBackup" to "1",
+                "module" to "",
+                "clientver" to "11430",
+                "key" to key,
+                "appid" to SignatureUtils.APP_ID,
+                "clienttime" to clientTime
+            )))
         }
 
         val request = Request.Builder()
