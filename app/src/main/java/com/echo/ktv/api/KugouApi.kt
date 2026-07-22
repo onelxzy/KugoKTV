@@ -287,10 +287,7 @@ object KugouApi {
     }
 
     private fun getFallbackMvs(keyword: String): List<MvItem> {
-        return listOf(
-            MvItem("$keyword (KTV高清版)", "华语群星", "732D3DB4E204E44D2753FD38D4A8523B", 260, ""),
-            MvItem("$keyword (伴奏现场)", "热门歌手", "3624C769CF86C192705A0BCE73A5BC55", 280, "")
-        )
+        return emptyList()
     }
 
     private fun getFallbackSongs(keyword: String): List<SongItem> {

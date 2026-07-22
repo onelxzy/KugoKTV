@@ -1306,7 +1306,6 @@ fun VideoPlayerOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     showControls = true
