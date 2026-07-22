@@ -31,7 +31,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 sealed class PlayableItem {
-    data class Mv(val mvItem: MvItem) : PlayableItem()
+    data class Mv(val mvItem: MvItem, val fallbackSongHash: String = "") : PlayableItem()
     data class Song(val songItem: SongItem) : PlayableItem()
 
     val title: String
@@ -111,8 +111,11 @@ object KtvPlayerManager {
             }
         }
 
+        // Pass mobile User-Agent to DefaultHttpDataSource so KuGou CDN does not 403 / reject ExoPlayer requests
         val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent("Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
             .setAllowCrossProtocolRedirects(true)
+
         val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context.applicationContext, httpDataSourceFactory)
         val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory().apply {
             setConstantBitrateSeekingEnabled(true)
@@ -143,12 +146,21 @@ object KtvPlayerManager {
                         isHandlingPlayerError = true
 
                         val ctx = appContext
-                        if (ctx != null) {
-                            Toast.makeText(ctx, "加载音频源失败，自动切换保底流", Toast.LENGTH_SHORT).show()
+                        val current = _currentPlaying.value
+                        if (current is PlayableItem.Mv && current.fallbackSongHash.isNotEmpty()) {
+                            if (ctx != null) {
+                                Toast.makeText(ctx, "MV播放异常，已为您切至原唱音频", Toast.LENGTH_SHORT).show()
+                            }
+                            KugouApi.getSongUrl(current.fallbackSongHash, "") { res ->
+                                res.onSuccess { url -> startPlayback(url) }
+                                res.onFailure { startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3") }
+                            }
+                        } else {
+                            if (ctx != null) {
+                                Toast.makeText(ctx, "加载音频源失败，自动切换保底流", Toast.LENGTH_SHORT).show()
+                            }
+                            startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
                         }
-                        
-                        // Directly load safe stream without recursive loops
-                        startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
                     }
                 })
             }
@@ -172,11 +184,18 @@ object KtvPlayerManager {
 
     fun addSongToQueue(song: SongItem) {
         val list = _playlist.value.toMutableList()
-        list.add(PlayableItem.Song(song))
+        // If song has MV, prefer MV item with fallback to song audio
+        val item = if (song.mvHash.isNotEmpty()) {
+            PlayableItem.Mv(MvItem(song.title, song.artist, song.mvHash, song.duration, ""), song.hash)
+        } else {
+            PlayableItem.Song(song)
+        }
+        list.add(item)
         _playlist.value = list
 
         appContext?.let {
-            Toast.makeText(it, "已加入点播队列: ${song.title}", Toast.LENGTH_SHORT).show()
+            val typeStr = if (song.mvHash.isNotEmpty()) "MV" else "歌曲"
+            Toast.makeText(it, "已加入点播队列($typeStr): ${song.title}", Toast.LENGTH_SHORT).show()
         }
 
         if (_currentPlaying.value == null) {
@@ -229,7 +248,17 @@ object KtvPlayerManager {
                                 downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
                             }
                             result.onFailure {
-                                startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
+                                if (nextItem.fallbackSongHash.isNotEmpty()) {
+                                    appContext?.let {
+                                        Toast.makeText(it, "已为您播放《${nextItem.title}》原唱音频", Toast.LENGTH_SHORT).show()
+                                    }
+                                    KugouApi.getSongUrl(nextItem.fallbackSongHash, "") { res ->
+                                        res.onSuccess { url -> startPlayback(url) }
+                                        res.onFailure { startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3") }
+                                    }
+                                } else {
+                                    startPlayback("http://music.163.com/song/media/outer/url?id=1436709403.mp3")
+                                }
                             }
                         }
                     }
@@ -312,7 +341,6 @@ object KtvPlayerManager {
                 p.volume = _musicVolume.value
                 p.prepare()
                 p.play()
-                // Reset vocal elimination state on new track
                 setVocalElimination(_isVocalEliminated.value)
             }
         }
@@ -330,7 +358,6 @@ object KtvPlayerManager {
         scope.launch(Dispatchers.Main) {
             _isVocalEliminated.value = enabled
             vocalEliminator.setEliminateVocal(enabled)
-            // Force ExoPlayer to reload renderers/processors configuration
             player?.let { p ->
                 if (p.playbackState != Player.STATE_IDLE) {
                     val parameters = p.playbackParameters

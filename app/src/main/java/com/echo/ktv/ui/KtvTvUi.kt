@@ -1,52 +1,49 @@
 package com.echo.ktv.ui
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.Key
+import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
+import com.echo.ktv.api.SingerItem
 import com.echo.ktv.api.SongItem
 import com.echo.ktv.playback.KtvPlayerManager
 import com.echo.ktv.playback.PlayableItem
@@ -54,53 +51,54 @@ import com.echo.ktv.server.IpUtils
 import com.echo.ktv.server.QrCodeUtils
 import kotlinx.coroutines.delay
 
-// TV Theme Colors
+// High-contrast, premium dark mode design tokens
 object KtvTheme {
-    val Background = Color(0xFF070A13)
-    val CardBg = Color(0xFF131A2E)
-    val Accent = Color(0xFF00E5FF)
-    val TextMain = Color(0xFFF1F5F9)
-    val TextMuted = Color(0xFF64748B)
-}
-
-fun PlayableItem.toSongItem(): SongItem {
-    return when (this) {
-        is PlayableItem.Song -> songItem
-        is PlayableItem.Mv -> SongItem(mvItem.title, mvItem.artist, mvItem.mvHash, "mv", mvItem.duration)
-    }
+    val Background = Color(0xFF0F172A)
+    val CardBg = Color(0xFF1E293B)
+    val CardBgHover = Color(0xFF334155)
+    val Accent = Color(0xFF00E5FF) // Vibrant Cyan
+    val AccentGradient = Brush.horizontalGradient(colors = listOf(Color(0xFF00E5FF), Color(0xFF3B82F6)))
+    val TextMain = Color(0xFFF8FAFC)
+    val TextMuted = Color(0xFF94A3B8)
 }
 
 @Composable
 fun TvFocusableItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    autoFocus: Boolean = false,
-    content: @Composable BoxScope.(isFocused: Boolean) -> Unit
+    content: @Composable (isFocused: Boolean) -> Modifier = { Modifier }
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-    val scale by animateFloatAsState(if (isFocused) 1.04f else 1.0f)
-    val borderStroke = if (isFocused) BorderStroke(3.dp, KtvTheme.Accent) else BorderStroke(1.dp, Color.Transparent)
-
-    LaunchedEffect(Unit) {
-        if (autoFocus) {
-            delay(500)
-            focusRequester.requestFocus()
-        }
-    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
 
     Box(
         modifier = modifier
-            .focusRequester(focusRequester)
-            .scale(scale)
-            .border(borderStroke, RoundedCornerShape(10.dp))
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable(onClick = onClick)
+            .scale(if (isFocused) 1.05f else 1.0f)
+            .border(
+                width = if (isFocused) 3.dp else 0.dp,
+                color = if (isFocused) KtvTheme.Accent else Color.Transparent,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .focusable(interactionSource = interactionSource)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown &&
+                    (keyEvent.key == Key.DirectionCenter || keyEvent.key == Key.Enter)
+                ) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
             .clip(RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
-        content(isFocused)
+        Box(modifier = content(isFocused))
     }
 }
 
@@ -111,7 +109,9 @@ fun MainTvScreen() {
     var currentTab by remember { mutableStateOf("home") } // home, search, queue, songs_list, category
     var isPlayerFullscreen by remember { mutableStateOf(false) }
     var searchKeyword by remember { mutableStateOf("") }
-    var searchMvs by remember { mutableStateOf<List<MvItem>>(emptyList()) }
+    var searchMode by remember { mutableStateOf("song") } // song or singer
+    var searchSongs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var searchSingers by remember { mutableStateOf<List<SingerItem>>(emptyList()) }
     var hotSongs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
     var displaySongsList by remember { mutableStateOf<List<SongItem>>(emptyList()) }
     var listTitle by remember { mutableStateOf("") }
@@ -134,22 +134,21 @@ fun MainTvScreen() {
     // Total ordered count = queued + currently playing
     val totalSelectedCount = playlist.size + (if (currentPlaying != null) 1 else 0)
 
-    // Automatic search execution when searchKeyword changes
-    LaunchedEffect(searchKeyword) {
+    // Automatic search execution when searchKeyword or searchMode changes
+    LaunchedEffect(searchKeyword, searchMode) {
         if (searchKeyword.isNotBlank()) {
-            KugouApi.searchMV(searchKeyword) { result ->
-                result.onSuccess { mvs ->
-                    searchMvs = mvs
-                    if (mvs.isEmpty()) {
-                        Toast.makeText(context, "未找到关联歌曲: $searchKeyword", Toast.LENGTH_SHORT).show()
-                    }
+            if (searchMode == "song") {
+                KugouApi.searchSong(searchKeyword) { result ->
+                    result.onSuccess { searchSongs = it }
                 }
-                result.onFailure { err ->
-                    Toast.makeText(context, "搜索遇到问题: ${err.message}", Toast.LENGTH_LONG).show()
+            } else {
+                KugouApi.searchSinger(searchKeyword) { result ->
+                    result.onSuccess { searchSingers = it }
                 }
             }
         } else {
-            searchMvs = emptyList()
+            searchSongs = emptyList()
+            searchSingers = emptyList()
         }
     }
 
@@ -220,83 +219,26 @@ fun MainTvScreen() {
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left Column (Player & Bottom 3 cards): 45% width
-                        Column(
+                        // Left Area (Playback Preview Card): 45% width
+                        PlaybackPreviewCard(
+                            currentPlaying = currentPlaying,
+                            isPlaying = isPlaying,
+                            playlist = playlist,
+                            onExpandClick = {
+                                if (currentPlaying != null) {
+                                    isPlayerFullscreen = true
+                                } else {
+                                    Toast.makeText(context, "请先点歌后再进入播放页面", Toast.LENGTH_SHORT).show()
+                                }
+                            },
                             modifier = Modifier
                                 .weight(0.45f)
-                                .fillMaxHeight(),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            IntegratedPlayerWindow(
-                                currentPlaying = currentPlaying,
-                                onClick = {
-                                    if (currentPlaying != null) {
-                                        isPlayerFullscreen = true
-                                    } else {
-                                        Toast.makeText(context, "请先点歌开始播放", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Bottom 3 cards Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(80.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                GridCard(
-                                    title = "常唱",
-                                    subtitle = "历史点歌记录",
-                                    emoji = "🎙",
-                                    gradient = Brush.horizontalGradient(
-                                        colors = listOf(Color(0xFF11998E), Color(0xFF38EF7D))
-                                    ),
-                                    onClick = {
-                                        displaySongsList = history
-                                        listTitle = "🎙 经典常唱歌曲"
-                                        currentTab = "songs_list"
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                GridCard(
-                                    title = "收藏",
-                                    subtitle = "我的专属列表",
-                                    emoji = "❤️",
-                                    gradient = Brush.horizontalGradient(
-                                        colors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB))
-                                    ),
-                                    onClick = {
-                                        displaySongsList = favorites
-                                        listTitle = "❤️ 我的收藏歌单"
-                                        currentTab = "songs_list"
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                GridCard(
-                                    title = "分类",
-                                    subtitle = "在线智能分类",
-                                    emoji = "💬",
-                                    gradient = Brush.horizontalGradient(
-                                        colors = listOf(Color(0xFF00F2FE), Color(0xFF4FACFE))
-                                    ),
-                                    onClick = {
-                                        currentTab = "category"
-                                        currentCategoryName = ""
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
+                                .fillMaxHeight()
+                        )
 
                         Spacer(modifier = Modifier.width(16.dp))
 
-                        // Center Grid Column (2x2 cards): 35% width
+                        // Middle Area (2x2 Feature Grid): 35% width
                         Column(
                             modifier = Modifier
                                 .weight(0.35f)
@@ -325,12 +267,15 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "歌名",
-                                    subtitle = "首字母快速找歌",
+                                    subtitle = "首字母快速点歌",
                                     emoji = "📢",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF7F00FF), Color(0xFFE100FF))
                                     ),
-                                    onClick = { currentTab = "search" },
+                                    onClick = {
+                                        searchMode = "song"
+                                        currentTab = "search"
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -345,12 +290,15 @@ fun MainTvScreen() {
                             ) {
                                 GridCard(
                                     title = "歌星",
-                                    subtitle = "按拼音搜喜爱的歌星",
+                                    subtitle = "按拼音搜喜爱的歌手",
                                     emoji = "⭐",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFF8C00), Color(0xFFFF0080))
                                     ),
-                                    onClick = { currentTab = "search" },
+                                    onClick = {
+                                        searchMode = "singer"
+                                        currentTab = "search"
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                                 GridCard(
@@ -420,23 +368,17 @@ fun MainTvScreen() {
                                     }
                                 }
                             }
-                            "search" -> SearchMvContent(
+                            "search" -> SearchContent(
                                 keyword = searchKeyword,
                                 onKeywordChange = { searchKeyword = it },
-                                mvs = searchMvs,
-                                onSearch = {
-                                    if (searchKeyword.isNotBlank()) {
-                                        Toast.makeText(context, "正在搜索: $searchKeyword", Toast.LENGTH_SHORT).show()
-                                        KugouApi.searchMV(searchKeyword) { result ->
-                                            result.onSuccess { searchMvs = it }
-                                            result.onFailure { err ->
-                                                Toast.makeText(context, "搜索失败: ${err.message}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                },
-                                onSelect = { mv ->
-                                    KtvPlayerManager.addMvToQueue(mv)
+                                searchMode = searchMode,
+                                onSearchModeChange = { searchMode = it },
+                                songs = searchSongs,
+                                singers = searchSingers,
+                                onSelectSong = { song -> KtvPlayerManager.addSongToQueue(song) },
+                                onSelectSinger = { singer ->
+                                    searchMode = "song"
+                                    searchKeyword = singer.singerName
                                 }
                             )
                             "queue" -> PlaylistQueueContent(playlist, currentPlaying)
@@ -448,10 +390,29 @@ fun MainTvScreen() {
     }
 
     if (showQrDialog) {
-        QrCodeDialog(
-            localIp = localIp,
-            qrBitmap = qrBitmap,
-            onDismiss = { showQrDialog = false }
+        AlertDialog(
+            onDismissRequest = { showQrDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showQrDialog = false }) {
+                    Text("关闭", color = KtvTheme.Accent)
+                }
+            },
+            title = { Text("📱 手机扫码点歌", color = Color.White) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "扫码点歌二维码",
+                            modifier = Modifier.size(200.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("请确保手机与电视处于同一局域网", color = KtvTheme.TextMuted, fontSize = 14.sp)
+                    Text("扫码或访问: http://$localIp:19985/", color = KtvTheme.Accent, fontSize = 14.sp)
+                }
+            },
+            containerColor = Color(0xFF1E293B)
         )
     }
 }
@@ -467,88 +428,105 @@ fun TopBar(
     onReplayClick: () -> Unit,
     onQrClick: () -> Unit,
     isVocalEliminated: Boolean,
-    isPlaying: Boolean,
-    modifier: Modifier = Modifier
+    isPlaying: Boolean
 ) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(56.dp)
+            .background(KtvTheme.CardBg.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = "酷唱 KTV 🎙",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            color = KtvTheme.Accent,
-            modifier = Modifier.padding(end = 24.dp)
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        TvFocusableItem(
-            onClick = onSearchClick,
-            autoFocus = true
-        ) { _ ->
-            Text("🔍 搜索", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        TvFocusableItem(onClick = onQueueClick) { _ ->
-            Text("📋 已点 ($selectedSize)", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        TvFocusableItem(onClick = onQrClick) { _ ->
-            Text("📱 扫码点歌", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-        }
-        
-        Spacer(modifier = Modifier.weight(1f))
-
-        TvFocusableItem(onClick = onVocalClick) { _ ->
+        // App Title
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = if (isVocalEliminated) "🎙 伴奏" else "🎤 原唱",
-                fontSize = 16.sp,
-                color = if (isVocalEliminated) KtvTheme.Accent else Color.White,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                text = "酷唱 KTV",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = KtvTheme.Accent
             )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("🎤", fontSize = 20.sp)
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        TvFocusableItem(onClick = onSkipClick) { _ ->
-            Text("⏭ 切歌", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        TvFocusableItem(onClick = onPlayPauseClick) { _ ->
-            Text(
-                text = if (isPlaying) "⏸ 暂停" else "▶ 播放",
-                fontSize = 16.sp,
-                color = Color.White,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+
+        // Action Buttons Row
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TopBarButton(label = "搜索", icon = "🔍", onClick = onSearchClick)
+            TopBarButton(label = "已点 ($selectedSize)", icon = "📋", onClick = onQueueClick)
+            TopBarButton(label = "扫码点歌", icon = "📱", onClick = onQrClick)
+            TopBarButton(
+                label = if (isVocalEliminated) "伴奏" else "原唱",
+                icon = "🎤",
+                isHighlighted = isVocalEliminated,
+                onClick = onVocalClick
             )
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        TvFocusableItem(onClick = onReplayClick) { _ ->
-            Text("🔄 重唱", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+            TopBarButton(label = "重唱", icon = "🔄", onClick = onReplayClick)
+            TopBarButton(label = "切歌", icon = "⏭", onClick = onSkipClick)
+            TopBarButton(
+                label = if (isPlaying) "暂停" else "播放",
+                icon = if (isPlaying) "⏸" else "▶",
+                onClick = onPlayPauseClick
+            )
         }
     }
 }
 
 @Composable
-fun IntegratedPlayerWindow(
+fun TopBarButton(
+    label: String,
+    icon: String,
+    isHighlighted: Boolean = false,
+    onClick: () -> Unit
+) {
+    TvFocusableItem(onClick = onClick) { isFocused ->
+        Row(
+            modifier = Modifier
+                .background(
+                    when {
+                        isFocused -> KtvTheme.Accent
+                        isHighlighted -> Color(0xFFE11D48)
+                        else -> Color(0xFF334155).copy(alpha = 0.6f)
+                    },
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(icon, fontSize = 14.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                label,
+                fontSize = 14.sp,
+                color = if (isFocused) Color.Black else Color.White,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+fun PlaybackPreviewCard(
     currentPlaying: PlayableItem?,
-    onClick: () -> Unit,
+    isPlaying: Boolean,
+    playlist: List<PlayableItem>,
+    onExpandClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val player = KtvPlayerManager.getPlayer()
-    
+
     TvFocusableItem(
-        onClick = onClick,
+        onClick = onExpandClick,
         modifier = modifier
     ) { isFocused ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(KtvTheme.CardBg, RoundedCornerShape(12.dp))
         ) {
             if (currentPlaying != null && player != null) {
+                // Live ExoPlayer Surface View
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
@@ -558,70 +536,80 @@ fun IntegratedPlayerWindow(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
-                
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomStart)
-                        .background(Color(0x99000000))
-                        .padding(8.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = currentPlaying.title,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = currentPlaying.artist,
-                            fontSize = 11.sp,
-                            color = Color.LightGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            } else {
+
+                // Overlay gradient for text legibility
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.radialGradient(
-                                colors = listOf(Color(0xFF2C1B4D), Color(0xFF070A13))
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
                             )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(70.dp)
-                                .background(Color(0xFF00E5FF).copy(alpha = 0.1f), CircleShape)
-                                .border(2.dp, Color(0xFF00E5FF), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("👤", fontSize = 32.sp)
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "原唱",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
                         )
-                    }
+                )
+
+                // Current song info at bottom left
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = currentPlaying.title,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = currentPlaying.artist,
+                        fontSize = 14.sp,
+                        color = KtvTheme.TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
-            }
-            
-            if (isFocused) {
+
+                // Expand button indicator at top right
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .border(3.dp, KtvTheme.Accent, RoundedCornerShape(10.dp))
-                )
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        .padding(8.dp)
+                ) {
+                    Text("⛶ 全屏", color = Color.White, fontSize = 12.sp)
+                }
+            } else {
+                // Empty state when no song is playing
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(70.dp)
+                            .background(KtvTheme.Accent.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎵", fontSize = 36.sp)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "暂无播放中的歌曲",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = KtvTheme.TextMain
+                    )
+                    Text(
+                        text = "点击上方按键点歌，即可在此开启卡拉 OK 演唱",
+                        fontSize = 13.sp,
+                        color = KtvTheme.TextMuted,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
         }
     }
@@ -638,28 +626,24 @@ fun GridCard(
 ) {
     TvFocusableItem(
         onClick = onClick,
-        modifier = modifier.fillMaxHeight()
+        modifier = modifier
     ) { isFocused ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(gradient)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .background(gradient, RoundedCornerShape(12.dp))
+                .padding(14.dp)
         ) {
-            Column(
-                modifier = Modifier.align(Alignment.CenterStart)
-            ) {
+            Column(modifier = Modifier.align(Alignment.BottomStart)) {
                 Text(
                     text = title,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
+                    color = Color.White
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.8f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -669,7 +653,7 @@ fun GridCard(
                 text = emoji,
                 fontSize = 32.sp,
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
+                    .align(Alignment.TopEnd)
                     .scale(if (isFocused) 1.2f else 1.0f)
             )
         }
@@ -687,117 +671,80 @@ fun TallFeatureCard(
         onClick = onClick,
         modifier = modifier
     ) { isFocused ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xFFFF416C), Color(0xFFFF4B2B))
-                    )
-                )
+                .background(KtvTheme.CardBg, RoundedCornerShape(12.dp))
                 .padding(16.dp)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                Text("🔥", fontSize = 20.sp)
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = title,
-                    fontSize = 24.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = KtvTheme.TextMain
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "HOT SONGS",
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                songs.take(3).forEachIndexed { index, song ->
-                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                songs.take(4).forEachIndexed { index, song ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0F172A), RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "${index + 1}. ${song.title}",
-                            fontSize = 15.sp,
+                            text = "${index + 1}",
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = if (index < 3) KtvTheme.Accent else KtvTheme.TextMuted,
+                            modifier = Modifier.width(20.dp)
                         )
-                        Text(
-                            text = song.artist,
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column {
+                            Text(
+                                text = song.title,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = song.artist,
+                                fontSize = 11.sp,
+                                color = KtvTheme.TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
-            Text(
-                text = "🔥",
-                fontSize = 60.sp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 12.dp, end = 12.dp)
-                    .scale(if (isFocused) 1.2f else 1.0f)
-            )
         }
     }
 }
 
 @Composable
-fun QrCodeDialog(
-    localIp: String,
-    qrBitmap: Bitmap?,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("关闭")
-            }
-        },
-        title = {
-            Text("手机扫码点歌 📱", fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (qrBitmap != null) {
-                    Image(
-                        bitmap = qrBitmap.asImageBitmap(),
-                        contentDescription = "QR Code",
-                        modifier = Modifier.size(200.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("请确保手机与电视在同一局域网下，扫码或访问地址：", fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("http://$localIp:19985", fontWeight = FontWeight.Bold, color = KtvTheme.Accent, fontSize = 18.sp)
-            }
-        }
-    )
-}
-
-@Composable
 fun SongsListGrid(title: String, songs: List<SongItem>, onSelect: (SongItem) -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = title,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = KtvTheme.TextMain,
-            modifier = Modifier.padding(bottom = 16.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, modifier = Modifier.padding(bottom = 16.dp))
+
         if (songs.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("暂无缓存，唱过的歌曲会自动下载到本地！", color = KtvTheme.TextMuted, fontSize = 18.sp)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("暂无数据", color = KtvTheme.TextMuted, fontSize = 18.sp)
             }
         } else {
             LazyVerticalGrid(
@@ -866,17 +813,15 @@ fun CategorySelectionGrid(onSelect: (String) -> Unit) {
 }
 
 @Composable
-fun HotSongsGrid(songs: List<SongItem>, onSelect: (SongItem) -> Unit) {
-    SongsListGrid("🔥 推荐热歌点播", songs, onSelect)
-}
-
-@Composable
-fun SearchMvContent(
+fun SearchContent(
     keyword: String,
     onKeywordChange: (String) -> Unit,
-    mvs: List<MvItem>,
-    onSearch: () -> Unit,
-    onSelect: (MvItem) -> Unit
+    searchMode: String, // "song" or "singer"
+    onSearchModeChange: (String) -> Unit,
+    songs: List<SongItem>,
+    singers: List<SingerItem>,
+    onSelectSong: (SongItem) -> Unit,
+    onSelectSinger: (SingerItem) -> Unit
 ) {
     val letters = ('A'..'Z').map { it.toString() }
     val focusManager = LocalFocusManager.current
@@ -978,9 +923,9 @@ fun SearchMvContent(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Right Column: Search input and results list
+        // Right Column: Search input, mode toggle and results list
         Column(modifier = Modifier.weight(1f)) {
-            // Search Input Row
+            // Search Input & Mode Toggle Row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -989,7 +934,7 @@ fun SearchMvContent(
                 TextField(
                     value = keyword,
                     onValueChange = onKeywordChange,
-                    placeholder = { Text("输入歌手/歌名首字母拼音...") },
+                    placeholder = { Text(if (searchMode == "song") "输入歌名/拼音首字母..." else "输入歌手/拼音首字母...") },
                     colors = TextFieldDefaults.textFieldColors(
                         containerColor = KtvTheme.CardBg,
                         textColor = KtvTheme.TextMain,
@@ -998,73 +943,187 @@ fun SearchMvContent(
                     modifier = Modifier
                         .weight(1.0f)
                         .clip(RoundedCornerShape(8.dp))
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyDown) {
-                                when (keyEvent.key) {
-                                    Key.DirectionDown -> {
-                                        focusManager.moveFocus(FocusDirection.Down)
-                                        true
-                                    }
-                                    Key.DirectionUp -> {
-                                        focusManager.moveFocus(FocusDirection.Up)
-                                        true
-                                    }
-                                    else -> false
-                                }
-                            } else {
-                                false
-                            }
-                        }
                 )
+
                 Spacer(modifier = Modifier.width(12.dp))
-                TvFocusableItem(onClick = onSearch) { _ ->
-                    Text("搜 索", fontSize = 16.sp, color = Color.White, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+
+                // Mode Toggle: 搜歌曲 vs 搜歌手
+                Row(
+                    modifier = Modifier
+                        .background(KtvTheme.CardBg, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    TvFocusableItem(onClick = { onSearchModeChange("song") }) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (searchMode == "song") KtvTheme.Accent else Color.Transparent,
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                "🎵 搜歌曲",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (searchMode == "song") Color.Black else Color.White
+                            )
+                        }
+                    }
+
+                    TvFocusableItem(onClick = { onSearchModeChange("singer") }) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (searchMode == "singer") KtvTheme.Accent else Color.Transparent,
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                "👤 搜歌手",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (searchMode == "singer") Color.Black else Color.White
+                            )
+                        }
+                    }
                 }
             }
 
-            // Results List
-            if (mvs.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(KtvTheme.CardBg.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (keyword.isBlank()) "请输入首字母搜索歌曲，如 'ZJL' 搜周杰伦，'QT' 搜晴天"
-                        else "搜索中，或未找到关联歌曲...",
-                        color = KtvTheme.TextMuted,
-                        fontSize = 16.sp
-                    )
+            // Results List based on searchMode
+            if (searchMode == "song") {
+                if (songs.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(KtvTheme.CardBg.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (keyword.isBlank()) "请输入拼音首字母搜索歌曲，如 'ZJL' 搜周杰伦，'QT' 搜晴天"
+                            else "未找到与 '$keyword' 相关的歌曲",
+                            color = KtvTheme.TextMuted,
+                            fontSize = 16.sp
+                        )
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(songs) { song ->
+                            TvFocusableItem(onClick = { onSelectSong(song) }) { _ ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(KtvTheme.CardBg)
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .background(
+                                                if (song.mvHash.isNotEmpty()) Color(0xFF0284C7) else Color(0xFF475569),
+                                                RoundedCornerShape(6.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            if (song.mvHash.isNotEmpty()) "🎬" else "🎵",
+                                            fontSize = 22.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = song.title,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = KtvTheme.TextMain,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = song.artist,
+                                                fontSize = 13.sp,
+                                                color = KtvTheme.TextMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (song.mvHash.isNotEmpty()) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    "[MV]",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = KtvTheme.Accent
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(mvs) { mv ->
-                        TvFocusableItem(onClick = { onSelect(mv) }) { _ ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(KtvTheme.CardBg)
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
+                // Singer Mode
+                if (singers.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(KtvTheme.CardBg.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (keyword.isBlank()) "请输入拼音首字母搜索歌手，如 'ZJ' 搜张杰"
+                            else "未找到与 '$keyword' 相关的歌手",
+                            color = KtvTheme.TextMuted,
+                            fontSize = 16.sp
+                        )
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(singers) { singer ->
+                            TvFocusableItem(onClick = { onSelectSinger(singer) }) { _ ->
+                                Column(
                                     modifier = Modifier
-                                        .size(60.dp)
-                                        .background(Color.DarkGray, RoundedCornerShape(4.dp)),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .background(KtvTheme.CardBg)
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Text("🎬", fontSize = 24.sp)
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    colors = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899))
+                                                ),
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("👤", fontSize = 32.sp)
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = mv.title,
+                                        text = singer.singerName,
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = KtvTheme.TextMain,
@@ -1072,12 +1131,10 @@ fun SearchMvContent(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = mv.artist,
-                                        fontSize = 13.sp,
+                                        text = "点击查看该歌手金曲",
+                                        fontSize = 12.sp,
                                         color = KtvTheme.TextMuted,
-                                        modifier = Modifier.padding(top = 2.dp),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        modifier = Modifier.padding(top = 2.dp)
                                     )
                                 }
                             }
@@ -1099,32 +1156,51 @@ fun PlaylistQueueContent(list: List<PlayableItem>, currentPlaying: PlayableItem?
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("▶ 正在播放", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = KtvTheme.Accent)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(currentPlaying.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("▶ 正在播放:", fontSize = 16.sp, color = KtvTheme.Accent, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(currentPlaying.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${currentPlaying.title} - ${currentPlaying.artist}", fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
 
-        if (list.isEmpty() && currentPlaying == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("点歌队列空空如也，请从手机扫码或搜索添加歌曲", color = KtvTheme.TextMuted)
+        if (list.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(KtvTheme.CardBg.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("点播队列为空，快去点首歌吧！", color = KtvTheme.TextMuted, fontSize = 18.sp)
             }
-        } else if (list.isNotEmpty()) {
-            Text("等待播放 (${list.size}):", fontSize = 16.sp, color = KtvTheme.TextMuted, modifier = Modifier.padding(bottom = 8.dp))
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(list) { item ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = KtvTheme.CardBg),
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(1),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(list.size) { index ->
+                    val item = list[index]
+                    TvFocusableItem(
+                        onClick = { KtvPlayerManager.removeAt(index) },
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = KtvTheme.TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(item.artist, fontSize = 14.sp, color = KtvTheme.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    ) { _ ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(KtvTheme.CardBg)
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Text("${index + 1}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = KtvTheme.Accent, modifier = Modifier.width(30.dp))
+                                Column {
+                                    Text(item.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(item.artist, fontSize = 13.sp, color = KtvTheme.TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Text("删除 🗑", color = Color(0xFFEF4444), fontSize = 14.sp)
                         }
                     }
                 }
@@ -1138,75 +1214,57 @@ fun VideoPlayerOverlay(
     item: PlayableItem,
     onCloseFullscreen: () -> Unit
 ) {
-    val context = LocalContext.current
+    val player = KtvPlayerManager.getPlayer()
+    val isPlaying by KtvPlayerManager.isPlaying.collectAsState()
     val isVocalEliminated by KtvPlayerManager.isVocalEliminated.collectAsState()
     val musicVolume by KtvPlayerManager.musicVolume.collectAsState()
-    val isPlaying by KtvPlayerManager.isPlaying.collectAsState()
-    val favorites by KtvPlayerManager.favorites.collectAsState()
 
-    val player = KtvPlayerManager.getPlayer()
-    var currentPosition by remember { mutableStateOf(0L) }
-    var duration by remember { mutableStateOf(0L) }
+    var showControls by remember { mutableStateOf(true) }
+    var currentPositionMs by remember { mutableStateOf(0L) }
+    var totalDurationMs by remember { mutableStateOf(0L) }
+    val focusManager = LocalFocusManager.current
 
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        delay(300)
-        focusRequester.requestFocus()
-    }
-
-    LaunchedEffect(player, isPlaying) {
+    LaunchedEffect(isPlaying) {
         while (true) {
-            if (player != null) {
-                currentPosition = player.currentPosition
-                duration = player.duration.coerceAtLeast(0L)
+            player?.let { p ->
+                currentPositionMs = p.currentPosition.coerceAtLeast(0L)
+                totalDurationMs = p.duration.coerceAtLeast(0L)
             }
             delay(500)
         }
     }
 
-    val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
-    val timeString = remember(currentPosition, duration) {
-        val curSec = (currentPosition / 1000) % 60
-        val curMin = (currentPosition / 1000) / 60
-        val durSec = (duration / 1000) % 60
-        val durMin = (duration / 1000) / 60
-        String.format("%02d:%02d / %02d:%02d", curMin, curSec, durMin, durSec)
-    }
-
-    val songItemRepresentation = remember(item) { item.toSongItem() }
-    val isFav = favorites.contains(songItemRepresentation)
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .focusRequester(focusRequester)
-            .focusable()
+            .background(Color.Black)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
+                    showControls = true
                     when (keyEvent.key) {
                         Key.DirectionLeft -> {
+                            // D-pad Left: Seek backward 10s
                             player?.let { p ->
-                                val newPos = (p.currentPosition - 10000L).coerceAtLeast(0L)
+                                val newPos = (p.currentPosition - 10000).coerceAtLeast(0L)
                                 p.seekTo(newPos)
-                                Toast.makeText(context, "<< 快退 10 秒", Toast.LENGTH_SHORT).show()
+                                currentPositionMs = newPos
                             }
                             true
                         }
                         Key.DirectionRight -> {
+                            // D-pad Right: Seek forward 10s
                             player?.let { p ->
-                                val targetDuration = p.duration.coerceAtLeast(0L)
-                                val newPos = (p.currentPosition + 10000L).coerceAtMost(targetDuration)
+                                val newPos = (p.currentPosition + 10000).coerceAtMost(p.duration.coerceAtLeast(0L))
                                 p.seekTo(newPos)
-                                Toast.makeText(context, ">> 快进 10 秒", Toast.LENGTH_SHORT).show()
+                                currentPositionMs = newPos
                             }
                             true
                         }
-                        Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
+                        Key.DirectionCenter, Key.Spacebar -> {
                             KtvPlayerManager.togglePlayPause()
                             true
                         }
-                        Key.Back, Key.Escape -> {
+                        Key.Escape, Key.Back -> {
                             onCloseFullscreen()
                             true
                         }
@@ -1215,6 +1273,7 @@ fun VideoPlayerOverlay(
                 } else false
             }
     ) {
+        // Player Surface View
         if (player != null) {
             AndroidView(
                 factory = { ctx ->
@@ -1227,149 +1286,184 @@ fun VideoPlayerOverlay(
             )
         }
 
-        if (item is PlayableItem.Song) {
+        // Overlay Controls
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.radialGradient(
-                            colors = listOf(Color(0xFF2C1B4D), Color(0xFF070A13))
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.7f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.85f)
+                            )
                         )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 40.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(130.dp)
-                            .background(Color(0xFF00E5FF).copy(alpha = 0.1f), CircleShape)
-                            .border(3.dp, Color(0xFF00E5FF), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("🎵", fontSize = 60.sp)
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = if (isVocalEliminated) "正在伴奏播放..." else "正在原唱播放...",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = KtvTheme.Accent
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+            ) {
+                // Top Header Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TvFocusableItem(onClick = onCloseFullscreen) { _ ->
+                            Box(
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("← 退出全屏", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = if (isVocalEliminated) "正在伴奏模式..." else "正在原唱播放...",
+                            color = KtvTheme.Accent,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("💡 方向键左右可快进快退", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+                    }
+                }
+
+                // Middle Big Title
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = item.title,
-                        fontSize = 26.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = item.artist,
-                        fontSize = 16.sp,
+                        fontSize = 20.sp,
                         color = KtvTheme.TextMuted,
-                        modifier = Modifier.padding(top = 4.dp),
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
-            }
-        }
 
-        // Bottom Overlay Bar (height limited so title overflow never pushes buttons off-screen)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .background(Color(0xCC070A13))
-                .padding(horizontal = 24.dp, vertical = 14.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Progress Bar and Time
-                Row(
+                // Bottom Progress Bar and Controls
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
                 ) {
-                    LinearProgressIndicator(
-                        progress = progress,
-                        color = KtvTheme.Accent,
-                        trackColor = Color.Gray.copy(alpha = 0.3f),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = timeString,
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
+                    // Seek Progress Slider Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val currentSec = currentPositionMs / 1000
+                        val totalSec = totalDurationMs / 1000
+                        val currentStr = String.format("%02d:%02d", currentSec / 60, currentSec % 60)
+                        val totalStr = String.format("%02d:%02d", totalSec / 60, totalSec % 60)
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(0.4f)) {
-                        Text(
-                            text = item.title,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        Slider(
+                            value = if (totalDurationMs > 0) currentPositionMs.toFloat() / totalDurationMs.toFloat() else 0f,
+                            onValueChange = { fraction ->
+                                player?.let { p ->
+                                    val target = (fraction * p.duration).toLong()
+                                    p.seekTo(target)
+                                }
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = KtvTheme.Accent,
+                                activeTrackColor = KtvTheme.Accent,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.weight(1f)
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = item.artist,
-                            fontSize = 14.sp,
-                            color = KtvTheme.TextMuted,
-                            modifier = Modifier.padding(top = 2.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = "$currentStr / $totalStr",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Controls Row
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier.weight(0.6f)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TvFocusableItem(onClick = { KtvPlayerManager.togglePlayPause() }) { _ ->
-                            Text(if (isPlaying) "暂停 ⏸" else "播放 ▶", color = Color.White, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TvFocusableItem(onClick = { KtvPlayerManager.toggleFavorite(songItemRepresentation) }) { _ ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
-                                text = if (isFav) "已收藏 ❤️" else "收藏 ♡",
-                                color = if (isFav) Color.Red else Color.White,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                text = item.title,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = item.artist,
+                                fontSize = 14.sp,
+                                color = KtvTheme.TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TvFocusableItem(onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }) { _ ->
-                            Text(
-                                text = if (isVocalEliminated) "🎙 伴奏模式" else "🎤 原唱模式",
-                                color = if (isVocalEliminated) KtvTheme.Accent else Color.White,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            TopBarButton(
+                                label = if (isPlaying) "暂停" else "播放",
+                                icon = if (isPlaying) "⏸" else "▶",
+                                onClick = { KtvPlayerManager.togglePlayPause() }
+                            )
+                            TopBarButton(
+                                label = if (isVocalEliminated) "伴奏" else "原唱",
+                                icon = "🎤",
+                                isHighlighted = isVocalEliminated,
+                                onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }
+                            )
+                            TopBarButton(
+                                label = "切歌",
+                                icon = "⏭",
+                                onClick = { KtvPlayerManager.skipCurrent() }
+                            )
+                            TopBarButton(
+                                label = "音量: ${(musicVolume * 100).toInt()}%",
+                                icon = "🔊",
+                                onClick = {
+                                    val nextVol = if (musicVolume >= 1.0f) 0.2f else musicVolume + 0.2f
+                                    KtvPlayerManager.setVolume(nextVol)
+                                }
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TvFocusableItem(onClick = { KtvPlayerManager.skipCurrent() }) { _ ->
-                            Text("切歌 ⏭", color = Color.White, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "音量: ${(musicVolume * 100).toInt()}%",
-                            fontSize = 14.sp,
-                            color = Color.White
-                        )
                     }
                 }
             }
