@@ -215,35 +215,38 @@ object KtvPlayerManager {
 
         checkCacheAndPlay(songItem) {
             scope.launch {
-                when (nextItem) {
-                    is PlayableItem.Mv -> {
-                        KugouApi.getMvUrl(nextItem.mvItem.mvHash, titleFallback = nextItem.title) { result ->
-                            result.onSuccess { url ->
-                                startPlayback(url, activeHash)
-                                downloadAndCache(nextItem.mvItem.mvHash, url, songItem)
-                            }
-                            result.onFailure {
-                                KugouApi.getSongUrlByTitle(nextItem.title) { res ->
-                                    res.onSuccess { url -> startPlayback(url, activeHash) }
+                // Auto-prefer MV search for any song or MV item
+                KugouApi.searchMV(nextItem.title) { result ->
+                    result.onSuccess { mvList ->
+                        val matchedMv = mvList.firstOrNull { it.mvHash.length >= 32 }
+                        if (matchedMv != null) {
+                            // Official 1080P MV video stream found!
+                            _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
+                            KugouApi.getMvUrl(matchedMv.mvHash, titleFallback = nextItem.title) { mvUrlRes ->
+                                mvUrlRes.onSuccess { videoUrl ->
+                                    startPlayback(videoUrl, activeHash)
+                                    downloadAndCache(matchedMv.mvHash, videoUrl, songItem)
+                                }
+                                mvUrlRes.onFailure {
+                                    playAudioFallback(nextItem, songItem)
                                 }
                             }
+                        } else {
+                            playAudioFallback(nextItem, songItem)
                         }
                     }
-                    is PlayableItem.Song -> {
-                        KugouApi.getSongUrl(nextItem.songItem.hash, nextItem.songItem.albumAudioId) { result ->
-                            result.onSuccess { url ->
-                                startPlayback(url, activeHash)
-                                downloadAndCache(nextItem.songItem.hash, url, songItem)
-                            }
-                            result.onFailure {
-                                KugouApi.getSongUrlByTitle(nextItem.songItem.title) { res ->
-                                    res.onSuccess { url -> startPlayback(url, activeHash) }
-                                }
-                            }
-                        }
+                    result.onFailure {
+                        playAudioFallback(nextItem, songItem)
                     }
                 }
             }
+        }
+    }
+
+    private fun playAudioFallback(nextItem: PlayableItem, songItem: SongItem) {
+        _currentPlaying.value = PlayableItem.Song(songItem)
+        KugouApi.getSongUrlByTitle(nextItem.title) { res ->
+            res.onSuccess { url -> startPlayback(url, activeHash) }
         }
     }
 
@@ -273,8 +276,8 @@ object KtvPlayerManager {
                 val cacheDir = File(context.filesDir, "ktv_cache")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
 
-                val isMv = url.contains(".mp4") || url.contains("mv") || song.albumAudioId == "mv"
-                val ext = if (isMv) "mp4" else "mp3"
+                val isMv = url.contains(".mp4") || url.contains(".mkv") || url.contains("mv") || song.albumAudioId == "mv"
+                val ext = if (isMv) "mkv" else "mp3"
                 val cacheFile = File(cacheDir, "${hash.lowercase()}.$ext")
 
                 if (cacheFile.exists()) return@launch
