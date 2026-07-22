@@ -3,7 +3,6 @@ package com.echo.ktv.playback
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.AudioFormat
-import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -23,16 +22,17 @@ class KtvVocalEliminator : AudioProcessor {
     fun isEliminatingVocal(): Boolean = isEliminating
 
     override fun configure(format: AudioFormat): AudioFormat {
-        if (format.encoding != C.ENCODING_PCM_16BIT) {
-            throw UnhandledAudioFormatException(format)
+        if (format.encoding != C.ENCODING_PCM_16BIT || format.channelCount != 2) {
+            inputFormat = AudioFormat.NOT_SET
+            outputFormat = AudioFormat.NOT_SET
+            return AudioFormat.NOT_SET
         }
         inputFormat = format
         outputFormat = format
         return outputFormat
     }
 
-    // Always active for 2-channel stereo PCM so processor stays in ExoPlayer pipeline
-    override fun isActive(): Boolean = inputFormat.channelCount == 2 && inputFormat.encoding == C.ENCODING_PCM_16BIT
+    override fun isActive(): Boolean = outputFormat != AudioFormat.NOT_SET
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val position = inputBuffer.position()

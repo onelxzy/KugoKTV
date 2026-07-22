@@ -729,62 +729,52 @@ fun TallFeatureCard(
         onClick = onClick,
         modifier = modifier
     ) { isFocused ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(KtvTheme.CardBg, RoundedCornerShape(12.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFFF416C), Color(0xFFFF4B2B))
+                    ),
+                    RoundedCornerShape(12.dp)
+                )
                 .padding(16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 12.dp)
-            ) {
-                Text("🔥", fontSize = 20.sp)
-                Spacer(modifier = Modifier.width(6.dp))
+            Column(modifier = Modifier.fillMaxSize()) {
                 Text(
                     text = title,
-                    fontSize = 18.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = KtvTheme.TextMain
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "HOT SONGS",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.6f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                songs.take(4).forEachIndexed { index, song ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF0F172A), RoundedCornerShape(6.dp))
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                songs.take(3).forEachIndexed { index, song ->
+                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
                         Text(
-                            text = "${index + 1}",
-                            fontSize = 14.sp,
+                            text = "${index + 1}. ${song.title}",
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (index < 3) KtvTheme.Accent else KtvTheme.TextMuted,
-                            modifier = Modifier.width(20.dp)
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Column {
-                            Text(
-                                text = song.title,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = song.artist,
-                                fontSize = 11.sp,
-                                color = KtvTheme.TextMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = song.artist,
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
                     }
                 }
             }
