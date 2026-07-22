@@ -743,18 +743,14 @@ fun TallFeatureCard(
                 .padding(16.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔥", fontSize = 20.sp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = title,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = title,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "HOT SONGS",
@@ -765,7 +761,7 @@ fun TallFeatureCard(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 songs.take(3).forEachIndexed { index, song ->
-                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
                         Text(
                             text = "${index + 1}. ${song.title}",
                             fontSize = 15.sp,
@@ -785,6 +781,15 @@ fun TallFeatureCard(
                     }
                 }
             }
+
+            // Big 🔥 Flame Emoji at Bottom Right Corner
+            Text(
+                text = "🔥",
+                fontSize = 50.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .scale(if (isFocused) 1.2f else 1.0f)
+            )
         }
     }
 }
