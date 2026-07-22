@@ -6,11 +6,7 @@ import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.SongItem
@@ -50,7 +46,6 @@ sealed class PlayableItem {
 object KtvPlayerManager {
     private var player: ExoPlayer? = null
     private var appContext: Context? = null
-    private val vocalEliminator = KtvVocalEliminator()
     private var sharedPreferences: SharedPreferences? = null
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
@@ -98,19 +93,6 @@ object KtvPlayerManager {
         sharedPreferences = context.getSharedPreferences("ktv_prefs", Context.MODE_PRIVATE)
         loadHistoryAndFavorites()
 
-        val renderersFactory = object : DefaultRenderersFactory(context.applicationContext) {
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean,
-                enableOffload: Boolean
-            ): AudioSink? {
-                return DefaultAudioSink.Builder(context)
-                    .setAudioProcessors(arrayOf(vocalEliminator))
-                    .build()
-            }
-        }
-
         val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent("Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
             .setAllowCrossProtocolRedirects(true)
@@ -123,7 +105,6 @@ object KtvPlayerManager {
             .setDataSourceFactory(dataSourceFactory)
 
         player = ExoPlayer.Builder(context.applicationContext)
-            .setRenderersFactory(renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .apply {
@@ -337,7 +318,6 @@ object KtvPlayerManager {
     fun setVocalElimination(enabled: Boolean) {
         scope.launch(Dispatchers.Main) {
             _isVocalEliminated.value = enabled
-            vocalEliminator.setEliminateVocal(enabled)
         }
     }
 
