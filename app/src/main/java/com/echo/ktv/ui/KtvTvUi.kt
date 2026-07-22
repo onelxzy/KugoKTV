@@ -219,22 +219,80 @@ fun MainTvScreen() {
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left Area (Playback Preview Card): 45% width
-                        PlaybackPreviewCard(
-                            currentPlaying = currentPlaying,
-                            isPlaying = isPlaying,
-                            playlist = playlist,
-                            onExpandClick = {
-                                if (currentPlaying != null) {
-                                    isPlayerFullscreen = true
-                                } else {
-                                    Toast.makeText(context, "请先点歌后再进入播放页面", Toast.LENGTH_SHORT).show()
-                                }
-                            },
+                        // Left Area (Playback Preview Card & 3 Quick Cards): 45% width
+                        Column(
                             modifier = Modifier
                                 .weight(0.45f)
                                 .fillMaxHeight()
-                        )
+                        ) {
+                            PlaybackPreviewCard(
+                                currentPlaying = currentPlaying,
+                                isPlaying = isPlaying,
+                                playlist = playlist,
+                                onExpandClick = {
+                                    if (currentPlaying != null) {
+                                        isPlayerFullscreen = true
+                                    } else {
+                                        Toast.makeText(context, "请先点歌后再进入播放页面", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Bottom 3 cards Row: 常唱, 收藏, 分类
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(85.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                GridCard(
+                                    title = "常唱",
+                                    subtitle = "历史点歌记录",
+                                    emoji = "🎙",
+                                    gradient = Brush.horizontalGradient(
+                                        colors = listOf(Color(0xFF11998E), Color(0xFF38EF7D))
+                                    ),
+                                    onClick = {
+                                        displaySongsList = history
+                                        listTitle = "🎙 经典常唱歌曲"
+                                        currentTab = "songs_list"
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                GridCard(
+                                    title = "收藏",
+                                    subtitle = "我的专属列表",
+                                    emoji = "❤️",
+                                    gradient = Brush.horizontalGradient(
+                                        colors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB))
+                                    ),
+                                    onClick = {
+                                        displaySongsList = favorites
+                                        listTitle = "❤️ 我的收藏歌单"
+                                        currentTab = "songs_list"
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                GridCard(
+                                    title = "分类",
+                                    subtitle = "在线智能分类",
+                                    emoji = "💬",
+                                    gradient = Brush.horizontalGradient(
+                                        colors = listOf(Color(0xFF00F2FE), Color(0xFF4FACFE))
+                                    ),
+                                    onClick = {
+                                        currentTab = "category"
+                                        currentCategoryName = ""
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.width(16.dp))
 

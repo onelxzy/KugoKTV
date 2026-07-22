@@ -11,6 +11,7 @@ import com.google.gson.JsonObject
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 data class SongItem(
@@ -47,15 +48,7 @@ object KugouApi {
     private val dfid = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
 
     // Guaranteed working 200 OK fallback audio URL (晴天)
-    private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=1436709403.mp3"
-
-    // Real Direct Audio URL Mapping for popular songs
-    private val directUrlMap = mapOf(
-        "c2d3a672834b6b6697a4a2a4b8df77a2" to "http://music.163.com/song/media/outer/url?id=1436709403.mp3", // 晴天
-        "f0a8d672834b6b6697a4a2a4b8df66a3" to "http://music.163.com/song/media/outer/url?id=1807799329.mp3", // 十年
-        "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d" to "http://music.163.com/song/media/outer/url?id=139774.mp3",     // 红日/海阔天空
-        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d" to "http://music.163.com/song/media/outer/url?id=188214.mp3"      // 吻别
-    )
+    private const val FALLBACK_AUDIO_URL = "http://music.163.com/song/media/outer/url?id=2652820720.mp3"
 
     private fun JsonObject.getSafeString(vararg keys: String): String {
         for (k in keys) {
@@ -306,14 +299,8 @@ object KugouApi {
         )
     }
 
-    fun getMvUrl(mvHash: String, callback: (Result<String>) -> Unit) {
+    fun getMvUrl(mvHash: String, titleFallback: String = "", callback: (Result<String>) -> Unit) {
         val lowerHash = mvHash.lowercase()
-        val directUrl = directUrlMap[lowerHash]
-        if (directUrl != null) {
-            mainHandler.post { callback(Result.success(directUrl)) }
-            return
-        }
-
         val clientTime = (System.currentTimeMillis() / 1000).toString()
         val key = SignatureUtils.signKey(lowerHash, mid)
 
@@ -352,7 +339,11 @@ object KugouApi {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                getSongUrl(lowerHash, "", callback)
+                if (titleFallback.isNotEmpty()) {
+                    getSongUrlByTitle(titleFallback, callback)
+                } else {
+                    getSongUrl(lowerHash, "", callback)
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -379,10 +370,18 @@ object KugouApi {
                         val finalUrl = downurl
                         mainHandler.post { callback(Result.success(finalUrl)) }
                     } else {
-                        getSongUrl(lowerHash, "", callback)
+                        if (titleFallback.isNotEmpty()) {
+                            getSongUrlByTitle(titleFallback, callback)
+                        } else {
+                            getSongUrl(lowerHash, "", callback)
+                        }
                     }
                 } catch (e: Exception) {
-                    getSongUrl(lowerHash, "", callback)
+                    if (titleFallback.isNotEmpty()) {
+                        getSongUrlByTitle(titleFallback, callback)
+                    } else {
+                        getSongUrl(lowerHash, "", callback)
+                    }
                 }
             }
         })
@@ -390,11 +389,6 @@ object KugouApi {
 
     fun getSongUrl(hash: String, albumAudioId: String, callback: (Result<String>) -> Unit) {
         val lowerHash = hash.lowercase()
-        val directUrl = directUrlMap[lowerHash]
-        if (directUrl != null) {
-            mainHandler.post { callback(Result.success(directUrl)) }
-            return
-        }
 
         val infoUrl = "http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=$lowerHash"
         val infoRequest = Request.Builder().url(infoUrl).build()
@@ -416,6 +410,46 @@ object KugouApi {
                     }
                 } catch (e: Exception) {
                     fallbackToGatewaySongUrl(lowerHash, albumAudioId, callback)
+                }
+            }
+        })
+    }
+
+    fun getSongUrlByTitle(songTitle: String, callback: (Result<String>) -> Unit) {
+        if (songTitle.isBlank()) {
+            mainHandler.post { callback(Result.success(FALLBACK_AUDIO_URL)) }
+            return
+        }
+
+        val searchUrl = "http://music.163.com/api/search/get/web?s=${URLEncoder.encode(songTitle, "UTF-8")}&type=1&limit=1"
+        val request = Request.Builder()
+            .url(searchUrl)
+            .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.success(FALLBACK_AUDIO_URL)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val resultObj = json.getAsJsonObject("result")
+                    val songsArr = resultObj?.getAsJsonArray("songs")
+                    if (songsArr != null && songsArr.size() > 0) {
+                        val firstSong = songsArr[0].asJsonObject
+                        val songId = firstSong.get("id")?.asLong ?: 0L
+                        if (songId > 0L) {
+                            val streamUrl = "http://music.163.com/song/media/outer/url?id=$songId.mp3"
+                            mainHandler.post { callback(Result.success(streamUrl)) }
+                            return
+                        }
+                    }
+                    mainHandler.post { callback(Result.success(FALLBACK_AUDIO_URL)) }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.success(FALLBACK_AUDIO_URL)) }
                 }
             }
         })
