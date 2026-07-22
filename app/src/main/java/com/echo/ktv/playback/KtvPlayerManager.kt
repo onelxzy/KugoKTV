@@ -207,7 +207,6 @@ object KtvPlayerManager {
 
         val nextItem = list.removeAt(0)
         _playlist.value = list
-        _currentPlaying.value = nextItem
         activeAccFileUrl = ""
 
         val songItem = when (nextItem) {
@@ -230,9 +229,9 @@ object KtvPlayerManager {
                 result.onSuccess { mvList ->
                     val matchedMv = mvList.firstOrNull { it.mvHash.length >= 32 }
                     if (matchedMv != null) {
-                        _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
                         KugouApi.getMvUrl(matchedMv.mvHash, titleFallback = cleanTitle) { mvUrlRes ->
                             mvUrlRes.onSuccess { videoUrl ->
+                                _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
                                 appContext?.let {
                                     Toast.makeText(it, "🎬 成功加载 1080P 高清 MV: $cleanTitle", Toast.LENGTH_SHORT).show()
                                 }

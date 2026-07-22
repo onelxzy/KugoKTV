@@ -1353,10 +1353,8 @@ fun VideoPlayerOverlay(
             )
         }
 
-        // Vinyl Disc animation for Audio songs or MV fallback audio
-        val isAudioOnly = (player?.videoFormat == null) || (item is PlayableItem.Song)
-
-        if (isAudioOnly) {
+        // Vinyl Disc animation for Audio songs
+        if (item is PlayableItem.Song) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
