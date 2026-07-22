@@ -191,7 +191,14 @@ object KtvPlayerManager {
     }
 
     private fun cleanSearchQuery(text: String): String {
-        return text.replace(Regex("\\(.*\\)|（.*）|\\[.*\\]"), "").trim()
+        var str = text
+        var prev = ""
+        val regex = Regex("\\([^)]*\\)|（[^）]*）|\\[[^\\]]*\\]|【[^】]*】|《[^》]*》")
+        while (prev != str) {
+            prev = str
+            str = regex.replace(str, "").trim()
+        }
+        return if (str.isEmpty()) text else str
     }
 
     fun playNext() {
@@ -218,37 +225,51 @@ object KtvPlayerManager {
 
         val cleanTitle = cleanSearchQuery(nextItem.title)
         val cleanArtist = cleanSearchQuery(nextItem.artist)
-        val searchKeyword = if (cleanArtist.isNotEmpty()) "$cleanTitle $cleanArtist" else cleanTitle
+        val primaryQuery = if (cleanArtist.isNotEmpty()) "$cleanTitle $cleanArtist" else cleanTitle
 
         appContext?.let {
             Toast.makeText(it, "🔍 正在为您检索《$cleanTitle》1080P 高清 MV...", Toast.LENGTH_SHORT).show()
         }
 
         scope.launch {
-            KugouApi.searchMV(searchKeyword) { result ->
-                result.onSuccess { mvList ->
-                    val matchedMv = mvList.firstOrNull { it.mvHash.length >= 32 }
-                    if (matchedMv != null) {
-                        KugouApi.getMvUrl(matchedMv.mvHash, titleFallback = cleanTitle) { mvUrlRes ->
-                            mvUrlRes.onSuccess { videoUrl ->
-                                _currentPlaying.value = PlayableItem.Mv(matchedMv, songItem.hash)
-                                appContext?.let {
-                                    Toast.makeText(it, "🎬 成功加载 1080P 高清 MV: $cleanTitle", Toast.LENGTH_SHORT).show()
-                                }
-                                startPlayback(videoUrl, activeHash)
-                                downloadAndCache(matchedMv.mvHash, videoUrl, songItem)
-                            }
-                            mvUrlRes.onFailure {
-                                playAudioFallback(cleanTitle, songItem)
-                            }
-                        }
+            // Stage 1: Search with "Title + Artist"
+            KugouApi.searchMV(primaryQuery) { res1 ->
+                res1.onSuccess { list1 ->
+                    val match1 = list1.firstOrNull { it.mvHash.length >= 32 }
+                    if (match1 != null) {
+                        fetchAndPlayMv(match1, cleanTitle, songItem)
                     } else {
-                        playAudioFallback(cleanTitle, songItem)
+                        // Stage 2: Search with pure "Title"
+                        KugouApi.searchMV(cleanTitle) { res2 ->
+                            res2.onSuccess { list2 ->
+                                val match2 = list2.firstOrNull { it.mvHash.length >= 32 }
+                                if (match2 != null) {
+                                    fetchAndPlayMv(match2, cleanTitle, songItem)
+                                } else {
+                                    playAudioFallback(cleanTitle, songItem)
+                                }
+                            }
+                            res2.onFailure { playAudioFallback(cleanTitle, songItem) }
+                        }
                     }
                 }
-                result.onFailure {
-                    playAudioFallback(cleanTitle, songItem)
+                res1.onFailure { playAudioFallback(cleanTitle, songItem) }
+            }
+        }
+    }
+
+    private fun fetchAndPlayMv(mv: MvItem, cleanTitle: String, songItem: SongItem) {
+        KugouApi.getMvUrl(mv.mvHash, titleFallback = cleanTitle) { mvUrlRes ->
+            mvUrlRes.onSuccess { videoUrl ->
+                _currentPlaying.value = PlayableItem.Mv(mv, songItem.hash)
+                appContext?.let {
+                    Toast.makeText(it, "🎬 成功加载 1080P 高清 MV: $cleanTitle", Toast.LENGTH_SHORT).show()
                 }
+                startPlayback(videoUrl, activeHash)
+                downloadAndCache(mv.mvHash, videoUrl, songItem)
+            }
+            mvUrlRes.onFailure {
+                playAudioFallback(cleanTitle, songItem)
             }
         }
     }
