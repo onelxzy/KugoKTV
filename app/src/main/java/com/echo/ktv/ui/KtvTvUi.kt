@@ -136,9 +136,10 @@ fun MainTvScreen() {
     // Total ordered count = queued + currently playing
     val totalSelectedCount = playlist.size + (if (currentPlaying != null) 1 else 0)
 
-    // Automatic search execution when searchKeyword or searchMode changes
-    LaunchedEffect(searchKeyword, searchMode) {
+    // Explicit search execution function called on Search button click
+    val performSearch: () -> Unit = {
         if (searchKeyword.isNotBlank()) {
+            Toast.makeText(context, "🔍 正在检索 酷狗概念版 数据库: $searchKeyword", Toast.LENGTH_SHORT).show()
             if (searchMode == "song") {
                 KugouApi.searchSong(searchKeyword) { result ->
                     result.onSuccess { searchSongs = it }
@@ -148,9 +149,6 @@ fun MainTvScreen() {
                     result.onSuccess { searchSingers = it }
                 }
             }
-        } else {
-            searchSongs = emptyList()
-            searchSingers = emptyList()
         }
     }
 
@@ -433,12 +431,16 @@ fun MainTvScreen() {
                                 onKeywordChange = { searchKeyword = it },
                                 searchMode = searchMode,
                                 onSearchModeChange = { searchMode = it },
+                                onExecuteSearch = performSearch,
                                 songs = searchSongs,
                                 singers = searchSingers,
                                 onSelectSong = { song -> KtvPlayerManager.addSongToQueue(song) },
                                 onSelectSinger = { singer ->
                                     searchMode = "song"
                                     searchKeyword = singer.singerName
+                                    KugouApi.searchSong(singer.singerName) { result ->
+                                        result.onSuccess { searchSongs = it }
+                                    }
                                 }
                             )
                             "queue" -> PlaylistQueueContent(playlist, currentPlaying)
@@ -878,6 +880,7 @@ fun SearchContent(
     onKeywordChange: (String) -> Unit,
     searchMode: String, // "song" or "singer"
     onSearchModeChange: (String) -> Unit,
+    onExecuteSearch: () -> Unit,
     songs: List<SongItem>,
     singers: List<SingerItem>,
     onSelectSong: (SongItem) -> Unit,
@@ -936,10 +939,10 @@ fun SearchContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Action Buttons
+            // Action Buttons: 退格, 清空, 搜索
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 TvFocusableItem(
                     onClick = {
@@ -957,7 +960,7 @@ fun SearchContent(
                             .background(Color(0xFFEF4444)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("退格 ⌫", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("⌫ 退格", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
 
@@ -975,7 +978,23 @@ fun SearchContent(
                             .background(Color(0xFF64748B)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("清空 🗑", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("🗑 清空", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+
+                TvFocusableItem(
+                    onClick = onExecuteSearch,
+                    modifier = Modifier
+                        .weight(1.2f)
+                        .height(40.dp)
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(if (isFocused) KtvTheme.Accent else Color(0xFF2563EB)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🔍 搜索", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
@@ -1005,7 +1024,22 @@ fun SearchContent(
                         .clip(RoundedCornerShape(8.dp))
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+
+                TvFocusableItem(onClick = onExecuteSearch) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (isFocused) KtvTheme.Accent else Color(0xFF2563EB),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Text("🔍 开始搜索", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Mode Toggle: 搜歌曲 vs 搜歌手
                 Row(
@@ -1021,11 +1055,11 @@ fun SearchContent(
                                     if (searchMode == "song") KtvTheme.Accent else Color.Transparent,
                                     RoundedCornerShape(6.dp)
                                 )
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
                                 "🎵 搜歌曲",
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (searchMode == "song") Color.Black else Color.White
                             )
@@ -1039,11 +1073,11 @@ fun SearchContent(
                                     if (searchMode == "singer") KtvTheme.Accent else Color.Transparent,
                                     RoundedCornerShape(6.dp)
                                 )
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
                                 "👤 搜歌手",
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (searchMode == "singer") Color.Black else Color.White
                             )
