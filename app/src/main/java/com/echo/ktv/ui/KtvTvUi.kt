@@ -20,6 +20,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,12 +34,15 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +74,20 @@ object KtvTheme {
     val GoldGradient = Brush.horizontalGradient(colors = listOf(Color(0xFFFFD700), Color(0xFFFFA500)))
     val TextMain = Color(0xFFF8FAFC)
     val TextMuted = Color(0xFF94A3B8)
+}
+
+@Composable
+fun FavoriteHeartIcon(
+    isFav: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = if (isFav) "❤️" else "♡",
+        fontSize = 17.sp,
+        color = if (isFav) Color(0xFFFF2D55) else Color.White.copy(alpha = 0.85f),
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -258,7 +278,7 @@ fun MainTvScreen() {
                             ) {
                                 GridCard(
                                     title = "常唱",
-                                    subtitle = "历史点歌记录",
+                                    subtitle = "历史点播",
                                     emoji = "🎙",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF0BA360), Color(0xFF3CBA92))
@@ -272,7 +292,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "收藏",
-                                    subtitle = "我的专属红心",
+                                    subtitle = "我的红心",
                                     emoji = "❤️",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFF0844), Color(0xFFFFB199))
@@ -286,7 +306,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "分类",
-                                    subtitle = "在线智能分类",
+                                    subtitle = "智能曲库",
                                     emoji = "💬",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF00B4DB), Color(0xFF0083B0))
@@ -317,7 +337,7 @@ fun MainTvScreen() {
                             ) {
                                 GridCard(
                                     title = "排行榜",
-                                    subtitle = "最新金曲大赏",
+                                    subtitle = "热歌金曲",
                                     emoji = "👑",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF0052D4), Color(0xFF4364F7), Color(0xFF6FB1FC))
@@ -331,7 +351,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "歌名",
-                                    subtitle = "首字母快速点歌",
+                                    subtitle = "拼音点歌",
                                     emoji = "📢",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF7F00FF), Color(0xFFE100FF))
@@ -354,7 +374,7 @@ fun MainTvScreen() {
                             ) {
                                 GridCard(
                                     title = "歌星",
-                                    subtitle = "按拼音搜喜爱歌手",
+                                    subtitle = "热门歌手",
                                     emoji = "⭐",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFFFF8008), Color(0xFFFFC837))
@@ -367,7 +387,7 @@ fun MainTvScreen() {
                                 )
                                 GridCard(
                                     title = "本地",
-                                    subtitle = "离线免网缓存库",
+                                    subtitle = "离线歌库",
                                     emoji = "📁",
                                     gradient = Brush.horizontalGradient(
                                         colors = listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B))
@@ -797,35 +817,35 @@ fun GridCard(
             modifier = Modifier
                 .fillMaxSize()
                 .background(gradient, RoundedCornerShape(12.dp))
-                .padding(16.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(0.75f)
+                    .fillMaxWidth()
             ) {
                 Text(
                     text = title,
-                    fontSize = 20.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    softWrap = false
                 )
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
             Text(
                 text = emoji,
-                fontSize = 36.sp,
+                fontSize = 34.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .scale(if (isFocused) 1.15f else 1.0f)
@@ -863,14 +883,15 @@ fun TallFeatureCard(
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    softWrap = false
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "HOT SONGS",
                     fontSize = 11.sp,
                     color = Color.White.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    softWrap = false
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -1046,12 +1067,12 @@ fun SongsListGrid(
                                     Box(
                                         modifier = Modifier
                                             .background(
-                                                if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color.Transparent,
+                                                if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
                                                 CircleShape
                                             )
                                             .padding(6.dp)
                                     ) {
-                                        Text(if (isFav) "❤️" else "🤍", fontSize = 16.sp)
+                                        FavoriteHeartIcon(isFav)
                                     }
                                 }
 
@@ -1283,22 +1304,50 @@ fun SearchContent(
                 .weight(1f)
                 .fillMaxHeight()
         ) {
-            // Search Input Header & Mode Toggle
+            // Search Input Header & Mode Toggle with Interactive BasicTextField
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF131C2E), RoundedCornerShape(12.dp))
                     .border(1.dp, KtvTheme.CardBorder, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = if (keyword.isEmpty()) "请输入拼音缩写或歌名/歌手名..." else keyword,
-                        fontSize = 16.sp,
-                        color = if (keyword.isEmpty()) KtvTheme.TextMuted else Color.White,
-                        fontWeight = if (keyword.isEmpty()) FontWeight.Normal else FontWeight.Bold
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text("🔍", fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
+                    BasicTextField(
+                        value = keyword,
+                        onValueChange = onKeywordChange,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        cursorBrush = SolidColor(KtvTheme.Accent),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Search
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onSearch = { onExecuteSearch() }
+                        ),
+                        decorationBox = { innerTextField ->
+                            if (keyword.isEmpty()) {
+                                Text(
+                                    text = "支持键鼠打字或左侧拼音缩写点歌...",
+                                    fontSize = 14.sp,
+                                    color = KtvTheme.TextMuted
+                                )
+                            }
+                            innerTextField()
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
@@ -1350,7 +1399,7 @@ fun SearchContent(
                         Box(
                             modifier = Modifier
                                 .background(Color(0xFF2563EB), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text("🔍 开始搜索", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
@@ -1373,7 +1422,7 @@ fun SearchContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (keyword.isEmpty()) "在左侧键盘输入拼音缩写，点击【搜索】查找歌曲" else "未搜索到相关歌曲",
+                                text = if (keyword.isEmpty()) "在上方输入框打字或在左侧键盘输入缩写，点击【开始搜索】" else "未搜索到相关歌曲",
                                 color = KtvTheme.TextMuted,
                                 fontSize = 15.sp
                             )
@@ -1425,7 +1474,16 @@ fun SearchContent(
                                             TvFocusableItem(
                                                 onClick = { KtvPlayerManager.toggleFavorite(song) }
                                             ) { _ ->
-                                                Text(if (isFav) "❤️" else "🤍", fontSize = 15.sp, modifier = Modifier.padding(4.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(
+                                                            if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
+                                                            CircleShape
+                                                        )
+                                                        .padding(6.dp)
+                                                ) {
+                                                    FavoriteHeartIcon(isFav)
+                                                }
                                             }
 
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -1451,7 +1509,7 @@ fun SearchContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (keyword.isEmpty()) "在左侧键盘输入拼音缩写，点击【搜索】查找歌手" else "未搜索到相关歌手",
+                                text = if (keyword.isEmpty()) "在上方输入框打字或在左侧键盘输入缩写，点击【开始搜索】" else "未搜索到相关歌手",
                                 color = KtvTheme.TextMuted,
                                 fontSize = 15.sp
                             )
@@ -1617,7 +1675,7 @@ fun PlaylistQueueContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TopBarButton(
                             label = if (isCurrentFav) "已收藏" else "收藏",
-                            icon = if (isCurrentFav) "❤️" else "🤍",
+                            icon = if (isCurrentFav) "❤️" else "♡",
                             isHighlighted = isCurrentFav,
                             onClick = { KtvPlayerManager.toggleCurrentFavorite() }
                         )
@@ -1714,10 +1772,13 @@ fun PlaylistQueueContent(
                                 TvFocusableItem(onClick = { KtvPlayerManager.toggleFavorite(songItem) }) { _ ->
                                     Box(
                                         modifier = Modifier
-                                            .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
+                                                RoundedCornerShape(8.dp)
+                                            )
                                             .padding(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
-                                        Text(if (isFav) "❤️" else "🤍", fontSize = 13.sp)
+                                        FavoriteHeartIcon(isFav)
                                     }
                                 }
 
@@ -2060,7 +2121,7 @@ fun VideoPlayerOverlay(
                             )
                             TopBarButton(
                                 label = if (isCurrentFav) "已收藏" else "收藏",
-                                icon = if (isCurrentFav) "❤️" else "🤍",
+                                icon = if (isCurrentFav) "❤️" else "♡",
                                 isHighlighted = isCurrentFav,
                                 onClick = { KtvPlayerManager.toggleCurrentFavorite() }
                             )
