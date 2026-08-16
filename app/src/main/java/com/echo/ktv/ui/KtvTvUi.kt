@@ -79,15 +79,39 @@ object KtvTheme {
 @Composable
 fun FavoriteHeartIcon(
     isFav: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 15.dp
 ) {
-    Text(
-        text = if (isFav) "❤️" else "♡",
-        fontSize = 17.sp,
-        color = if (isFav) Color(0xFFFF2D55) else Color.White.copy(alpha = 0.85f),
-        fontWeight = FontWeight.Bold,
-        modifier = modifier
-    )
+    androidx.compose.foundation.Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, h * 0.85f)
+            cubicTo(w * 0.12f, h * 0.58f, 0f, h * 0.32f, w * 0.22f, h * 0.12f)
+            cubicTo(w * 0.38f, -h * 0.02f, w * 0.48f, h * 0.14f, w * 0.5f, h * 0.22f)
+            cubicTo(w * 0.52f, h * 0.14f, w * 0.62f, -h * 0.02f, w * 0.78f, h * 0.12f)
+            cubicTo(w * 1.0f, h * 0.32f, w * 0.88f, h * 0.58f, w * 0.5f, h * 0.85f)
+            close()
+        }
+
+        if (isFav) {
+            drawPath(
+                path = path,
+                color = Color(0xFFFF2D55)
+            )
+        } else {
+            drawPath(
+                path = path,
+                color = Color.White.copy(alpha = 0.85f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 1.7.dp.toPx(),
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                )
+            )
+        }
+    }
 }
 
 @Composable
@@ -1103,32 +1127,42 @@ fun SongsListGrid(
 
                             Spacer(modifier = Modifier.width(8.dp))
 
-                            // Action Buttons: Favorite Heart + 点歌
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                // Favorite Heart Button
+                            // Action Buttons: Favorite Heart + 点歌 (Strictly uniform 28dp height)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Favorite Heart Button (34x28dp)
                                 TvFocusableItem(
-                                    onClick = { KtvPlayerManager.toggleFavorite(song) }
+                                    onClick = { KtvPlayerManager.toggleFavorite(song) },
+                                    modifier = Modifier.size(width = 34.dp, height = 28.dp)
                                 ) { _ ->
                                     Box(
                                         modifier = Modifier
+                                            .fillMaxSize()
                                             .background(
-                                                if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
-                                                CircleShape
+                                                if (isFav) Color(0xFFFF2D55).copy(alpha = 0.18f) else Color(0xFF1E293B),
+                                                RoundedCornerShape(6.dp)
                                             )
-                                            .padding(6.dp)
+                                            .border(
+                                                1.dp,
+                                                if (isFav) Color(0xFFFF2D55).copy(alpha = 0.6f) else KtvTheme.CardBorder,
+                                                RoundedCornerShape(6.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        FavoriteHeartIcon(isFav)
+                                        FavoriteHeartIcon(isFav = isFav, size = 15.dp)
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.width(8.dp))
 
                                 // Add to Queue Badge
                                 Box(
                                     modifier = Modifier
+                                        .height(28.dp)
                                         .background(KtvTheme.Accent.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                                         .border(1.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                        .padding(horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text("+ 点歌", color = KtvTheme.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -1515,30 +1549,41 @@ fun SearchContent(
                                             )
                                         }
 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                             TvFocusableItem(
-                                                onClick = { KtvPlayerManager.toggleFavorite(song) }
+                                                onClick = { KtvPlayerManager.toggleFavorite(song) },
+                                                modifier = Modifier.size(width = 34.dp, height = 28.dp)
                                             ) { _ ->
                                                 Box(
                                                     modifier = Modifier
+                                                        .fillMaxSize()
                                                         .background(
-                                                            if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
-                                                            CircleShape
+                                                            if (isFav) Color(0xFFFF2D55).copy(alpha = 0.18f) else Color(0xFF1E293B),
+                                                            RoundedCornerShape(6.dp)
                                                         )
-                                                        .padding(6.dp)
+                                                        .border(
+                                                            1.dp,
+                                                            if (isFav) Color(0xFFFF2D55).copy(alpha = 0.6f) else KtvTheme.CardBorder,
+                                                            RoundedCornerShape(6.dp)
+                                                        ),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    FavoriteHeartIcon(isFav)
+                                                    FavoriteHeartIcon(isFav = isFav, size = 15.dp)
                                                 }
                                             }
 
-                                            Spacer(modifier = Modifier.width(6.dp))
-
                                             Box(
                                                 modifier = Modifier
+                                                    .height(28.dp)
                                                     .background(KtvTheme.Accent.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    .border(1.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                                    .padding(horizontal = 10.dp),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Text("+ 点歌", color = KtvTheme.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text("+ 点歌", color = KtvTheme.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -1719,7 +1764,7 @@ fun PlaylistQueueContent(
                     // Actions for currently playing song
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TopBarButton(
-                            label = if (isCurrentFav) "已收藏" else "收藏",
+                            label = "收藏",
                             icon = if (isCurrentFav) "❤️" else "♡",
                             isHighlighted = isCurrentFav,
                             onClick = { KtvPlayerManager.toggleCurrentFavorite() }
@@ -1812,18 +1857,30 @@ fun PlaylistQueueContent(
                             }
 
                             // 3 Powerful Actions: 置顶, 立即播, 删除
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                // 收藏 toggle
-                                TvFocusableItem(onClick = { KtvPlayerManager.toggleFavorite(songItem) }) { _ ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 收藏 toggle (34x28dp)
+                                TvFocusableItem(
+                                    onClick = { KtvPlayerManager.toggleFavorite(songItem) },
+                                    modifier = Modifier.size(width = 34.dp, height = 28.dp)
+                                ) { _ ->
                                     Box(
                                         modifier = Modifier
+                                            .fillMaxSize()
                                             .background(
-                                                if (isFav) Color(0xFFE11D48).copy(alpha = 0.2f) else Color(0xFF1E293B),
-                                                RoundedCornerShape(8.dp)
+                                                if (isFav) Color(0xFFFF2D55).copy(alpha = 0.18f) else Color(0xFF1E293B),
+                                                RoundedCornerShape(6.dp)
                                             )
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            .border(
+                                                1.dp,
+                                                if (isFav) Color(0xFFFF2D55).copy(alpha = 0.6f) else KtvTheme.CardBorder,
+                                                RoundedCornerShape(6.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        FavoriteHeartIcon(isFav)
+                                        FavoriteHeartIcon(isFav = isFav, size = 15.dp)
                                     }
                                 }
 
@@ -2165,7 +2222,7 @@ fun VideoPlayerOverlay(
                                 onClick = { KtvPlayerManager.togglePlayPause() }
                             )
                             TopBarButton(
-                                label = if (isCurrentFav) "已收藏" else "收藏",
+                                label = "收藏",
                                 icon = if (isCurrentFav) "❤️" else "♡",
                                 isHighlighted = isCurrentFav,
                                 onClick = { KtvPlayerManager.toggleCurrentFavorite() }
