@@ -245,20 +245,15 @@ fun MainTvScreen() {
                 .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Action Bar
+                // Top Action Bar (Clean 6 Essential Buttons)
                 TopBar(
                     selectedSize = totalSelectedCount,
                     onSearchClick = { currentTab = "search" },
                     onQueueClick = { currentTab = "queue" },
+                    onQrClick = { showQrDialog = true },
                     onVocalClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) },
-                    onDspClick = { showDspDialog = true },
                     onSkipClick = { KtvPlayerManager.skipCurrent() },
                     onPlayPauseClick = { KtvPlayerManager.togglePlayPause() },
-                    onReplayClick = {
-                        KtvPlayerManager.getPlayer()?.seekTo(0)
-                        Toast.makeText(context, "正在重新播放", Toast.LENGTH_SHORT).show()
-                    },
-                    onQrClick = { showQrDialog = true },
                     isVocalEliminated = isVocalEliminated,
                     isPlaying = isPlaying
                 )
@@ -839,12 +834,10 @@ fun TopBar(
     selectedSize: Int,
     onSearchClick: () -> Unit,
     onQueueClick: () -> Unit,
+    onQrClick: () -> Unit,
     onVocalClick: () -> Unit,
-    onDspClick: () -> Unit,
     onSkipClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
-    onReplayClick: () -> Unit,
-    onQrClick: () -> Unit,
     isVocalEliminated: Boolean,
     isPlaying: Boolean
 ) {
@@ -887,7 +880,7 @@ fun TopBar(
             )
         }
 
-        // Action Buttons Row (Single Horizontal Line, Spaced Perfectly)
+        // Action Buttons Row (6 Essential Buttons, fits comfortably with ample margin)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TopBarButton(label = "搜索", icon = "🔍", onClick = onSearchClick)
             TopBarButton(
@@ -903,8 +896,6 @@ fun TopBar(
                 isHighlighted = isVocalEliminated,
                 onClick = onVocalClick
             )
-            TopBarButton(label = "调音", icon = "🎛", onClick = onDspClick)
-            TopBarButton(label = "重唱", icon = "🔄", onClick = onReplayClick)
             TopBarButton(label = "切歌", icon = "⏭", onClick = onSkipClick)
             TopBarButton(
                 label = if (isPlaying) "暂停" else "播放",
