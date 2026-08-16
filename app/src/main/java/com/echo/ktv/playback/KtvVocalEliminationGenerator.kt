@@ -16,14 +16,19 @@ import java.nio.ByteOrder
 import kotlin.math.cos
 import kotlin.math.sin
 
+data class DspSettings(
+    val vocalCutDepth: Float = 0.88f, // 0.0f - 1.0f (Default 0.88: Deep vocal subtraction)
+    val bassBoost: Float = 0.80f,     // 0.0f - 1.0f (Default 0.80: Rich, punchy bass)
+    val gainBoost: Float = 0.85f,     // 0.0f - 1.0f (Default 0.85: Loudness make-up)
+    val channelMode: Int = 0          // 0: Intelligent Multi-Band DSP, 1: Left Solo, 2: Right Solo
+) {
+    companion object {
+        val DEFAULT = DspSettings()
+    }
+}
+
 /**
- * Professional Lightweight Multi-Band DSP Vocal Eliminator (High-Gain & Punchy Bass Edition)
- * 
- * Features:
- * 1. 2nd-order IIR Butterworth Low-Pass filter (fc = 180Hz) to preserve 100% of the Bass, Kick Drum, and Sub-low groove.
- * 2. 2nd-order IIR Butterworth High-Pass filter (fc = 4500Hz) to retain sparkle, hi-hats, cymbals, and stereo ambient reverb.
- * 3. Phase-compensated mid-band Center Vocal Canceller with boosted side stereo gain (+5.5dB).
- * 4. Harmonic soft-saturation limiter to deliver maximum loudness and punch matching the original track with zero distortion!
+ * Advanced Multi-Band DSP Vocal Eliminator with Formant Notch Filtering and Tunable Controls
  */
 object KtvVocalEliminationGenerator {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -34,7 +39,7 @@ object KtvVocalEliminationGenerator {
         private val sampleRate: Float,
         private val q: Float = 0.7071f
     ) {
-        enum class Type { LOWPASS, HIGHPASS }
+        enum class Type { LOWPASS, HIGHPASS, NOTCH }
 
         private var b0 = 0f
         private var b1 = 0f
@@ -81,6 +86,20 @@ object KtvVocalEliminationGenerator {
                     a1 = a1Temp / a0Temp
                     a2 = a2Temp / a0Temp
                 }
+                Type.NOTCH -> {
+                    val b0Temp = 1f
+                    val b1Temp = -2f * cosW0
+                    val b2Temp = 1f
+                    val a0Temp = 1f + alpha
+                    val a1Temp = -2f * cosW0
+                    val a2Temp = 1f - alpha
+
+                    b0 = b0Temp / a0Temp
+                    b1 = b1Temp / a0Temp
+                    b2 = b2Temp / a0Temp
+                    a1 = a1Temp / a0Temp
+                    a2 = a2Temp / a0Temp
+                }
             }
         }
 
@@ -111,12 +130,17 @@ object KtvVocalEliminationGenerator {
         context: Context,
         inputPathOrUrl: String,
         hash: String,
+        settings: DspSettings = DspSettings.DEFAULT,
         callback: (Result<File>) -> Unit
     ) {
         val cacheDir = File(context.filesDir, "ktv_cache")
         if (!cacheDir.exists()) cacheDir.mkdirs()
         
-        val accFile = File(cacheDir, "${hash.lowercase()}_acc.wav")
+        val cutTag = (settings.vocalCutDepth * 100).toInt()
+        val bassTag = (settings.bassBoost * 100).toInt()
+        val gainTag = (settings.gainBoost * 100).toInt()
+        val accFile = File(cacheDir, "${hash.lowercase()}_acc_c${cutTag}_b${bassTag}_g${gainTag}_m${settings.channelMode}.wav")
+        
         if (accFile.exists() && accFile.length() > 1000) {
             mainHandler.post { callback(Result.success(accFile)) }
             return
@@ -166,19 +190,25 @@ object KtvVocalEliminationGenerator {
                     inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 } else 2
 
-                // Multi-band filters
+                // Multi-band filters tuned for optimum acoustic isolation
                 val sRateF = sampleRate.toFloat()
-                val bassFilterLeft = BiquadFilter(BiquadFilter.Type.LOWPASS, 180f, sRateF)
-                val bassFilterRight = BiquadFilter(BiquadFilter.Type.LOWPASS, 180f, sRateF)
-                val highFilterLeft = BiquadFilter(BiquadFilter.Type.HIGHPASS, 4500f, sRateF)
-                val highFilterRight = BiquadFilter(BiquadFilter.Type.HIGHPASS, 4500f, sRateF)
+                val bassFilterLeft = BiquadFilter(BiquadFilter.Type.LOWPASS, 160f, sRateF)
+                val bassFilterRight = BiquadFilter(BiquadFilter.Type.LOWPASS, 160f, sRateF)
+                val highFilterLeft = BiquadFilter(BiquadFilter.Type.HIGHPASS, 4200f, sRateF)
+                val highFilterRight = BiquadFilter(BiquadFilter.Type.HIGHPASS, 4200f, sRateF)
+                val notchFilterLeft = BiquadFilter(BiquadFilter.Type.NOTCH, 1500f, sRateF, q = 1.6f)
+                val notchFilterRight = BiquadFilter(BiquadFilter.Type.NOTCH, 1500f, sRateF, q = 1.6f)
 
-                val tempPcmFile = File(cacheDir, "${hash.lowercase()}_temp.pcm")
+                val tempPcmFile = File(cacheDir, "${hash.lowercase()}_temp_${System.currentTimeMillis()}.pcm")
                 val pcmOut = FileOutputStream(tempPcmFile)
 
                 val bufferInfo = MediaCodec.BufferInfo()
                 var isEOS = false
                 val timeoutUs = 10000L
+
+                val cutDepthMul = 1.15f + settings.vocalCutDepth * 0.70f // 1.15 ~ 1.85x
+                val bassMul = 0.85f + settings.bassBoost * 0.75f         // 0.85 ~ 1.60x
+                val totalGainMul = 1.05f + settings.gainBoost * 0.55f    // 1.05 ~ 1.60x
 
                 while (!isEOS) {
                     val inIndex = decoder.dequeueInputBuffer(timeoutUs)
@@ -214,29 +244,46 @@ object KtvVocalEliminationGenerator {
                                     val leftRaw = byteBuffer.short.toFloat()
                                     val rightRaw = byteBuffer.short.toFloat()
 
-                                    // 1. Extract Low-frequency Bass (<180Hz) to preserve kick and basslines
-                                    val bassLeft = bassFilterLeft.process(leftRaw)
-                                    val bassRight = bassFilterRight.process(rightRaw)
-                                    val monoBass = (bassLeft + bassRight) * 0.5f
+                                    when (settings.channelMode) {
+                                        1 -> {
+                                            // Left Channel Solo (for left-accompaniment MVs)
+                                            val mono = softLimit(leftRaw * totalGainMul)
+                                            outBuffer.putShort(mono)
+                                            outBuffer.putShort(mono)
+                                        }
+                                        2 -> {
+                                            // Right Channel Solo (for right-accompaniment MVs)
+                                            val mono = softLimit(rightRaw * totalGainMul)
+                                            outBuffer.putShort(mono)
+                                            outBuffer.putShort(mono)
+                                        }
+                                        else -> {
+                                            // 0: Intelligent Multi-Band DSP Cancellation
+                                            // 1. Low-frequency Bass Extraction (<160Hz)
+                                            val bassLeft = bassFilterLeft.process(leftRaw)
+                                            val bassRight = bassFilterRight.process(rightRaw)
+                                            val monoBass = (bassLeft + bassRight) * 0.5f * bassMul
 
-                                    // 2. Extract High-frequency Air & Reverb (>4500Hz)
-                                    val highLeft = highFilterLeft.process(leftRaw)
-                                    val highRight = highFilterRight.process(rightRaw)
+                                            // 2. High-frequency Air & Reverb Extraction (>4200Hz)
+                                            val highLeft = highFilterLeft.process(leftRaw)
+                                            val highRight = highFilterRight.process(rightRaw)
 
-                                    // 3. Center Vocal Cancellation in the mid range
-                                    val sideDiff = (leftRaw - rightRaw)
+                                            // 3. Formant Notch Suppression on Side Difference (removes throat vocal resonance)
+                                            val rawDiff = (leftRaw - rightRaw) * cutDepthMul
+                                            val notchedDiffLeft = notchFilterLeft.process(rawDiff)
+                                            val notchedDiffRight = notchFilterRight.process(-rawDiff)
 
-                                    // 4. Multi-band reconstruction with full loudness make-up gain:
-                                    // Mid vocal cancelled side * 1.55f + Full solid bass * 1.35f + High air * 0.65f
-                                    val outLeftF = (sideDiff * 1.55f + monoBass * 1.35f + highLeft * 0.65f) * 1.25f
-                                    val outRightF = (-sideDiff * 1.55f + monoBass * 1.35f + highRight * 0.65f) * 1.25f
+                                            // 4. Harmonic Acoustic Reconstruction with dynamic make-up gain
+                                            val outLeftF = (notchedDiffLeft + monoBass + highLeft * 0.65f) * totalGainMul
+                                            val outRightF = (notchedDiffRight + monoBass + highRight * 0.65f) * totalGainMul
 
-                                    // Soft-clipping limiter to prevent digital distortion while preserving maximum loudness
-                                    val outLeft = softLimit(outLeftF)
-                                    val outRight = softLimit(outRightF)
+                                            val outLeft = softLimit(outLeftF)
+                                            val outRight = softLimit(outRightF)
 
-                                    outBuffer.putShort(outLeft)
-                                    outBuffer.putShort(outRight)
+                                            outBuffer.putShort(outLeft)
+                                            outBuffer.putShort(outRight)
+                                        }
+                                    }
                                 }
                                 pcmOut.write(outBuffer.array())
                             } else {

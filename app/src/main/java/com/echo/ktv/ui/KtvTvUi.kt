@@ -169,6 +169,7 @@ fun MainTvScreen() {
     var listTitle by remember { mutableStateOf("") }
     var currentCategoryName by remember { mutableStateOf("") }
     var showQrDialog by remember { mutableStateOf(false) }
+    var showDspDialog by remember { mutableStateOf(false) }
 
     val playlist by KtvPlayerManager.playlist.collectAsState()
     val currentPlaying by KtvPlayerManager.currentPlaying.collectAsState()
@@ -228,6 +229,7 @@ fun MainTvScreen() {
         // Fullscreen Player
         VideoPlayerOverlay(
             item = currentPlaying!!,
+            onDspClick = { showDspDialog = true },
             onCloseFullscreen = { isPlayerFullscreen = false }
         )
     } else {
@@ -249,6 +251,7 @@ fun MainTvScreen() {
                     onSearchClick = { currentTab = "search" },
                     onQueueClick = { currentTab = "queue" },
                     onVocalClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) },
+                    onDspClick = { showDspDialog = true },
                     onSkipClick = { KtvPlayerManager.skipCurrent() },
                     onPlayPauseClick = { KtvPlayerManager.togglePlayPause() },
                     onReplayClick = {
@@ -626,6 +629,209 @@ fun MainTvScreen() {
             }
         }
     }
+    if (showDspDialog) {
+        KtvDspTuningDialog(onDismiss = { showDspDialog = false })
+    }
+}
+
+@Composable
+fun KtvDspTuningDialog(
+    onDismiss: () -> Unit
+) {
+    val dspSettings by KtvPlayerManager.dspSettings.collectAsState()
+    var cutDepth by remember(dspSettings) { mutableStateOf(dspSettings.vocalCutDepth) }
+    var bassBoost by remember(dspSettings) { mutableStateOf(dspSettings.bassBoost) }
+    var gainBoost by remember(dspSettings) { mutableStateOf(dspSettings.gainBoost) }
+    var channelMode by remember(dspSettings) { mutableStateOf(dspSettings.channelMode) }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(580.dp)
+                .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
+                .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                .padding(24.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Title Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🎛", fontSize = 22.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "消音伴奏调音台",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    // One-Click Reset Button
+                    TvFocusableItem(
+                        onClick = {
+                            KtvPlayerManager.resetDspSettingsToDefault()
+                        }
+                    ) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isFocused) Color(0xFFEF4444) else Color(0xFF1E293B),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("🔄 恢复最佳默认", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Channel Mode Row
+                Text("声道伴奏模式", fontSize = 13.sp, color = KtvTheme.TextMuted, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val modes = listOf("智能立体声消音", "左声道伴奏", "右声道伴奏")
+                    modes.forEachIndexed { index, modeName ->
+                        TvFocusableItem(
+                            onClick = {
+                                channelMode = index
+                                KtvPlayerManager.updateDspSettings(
+                                    dspSettings.copy(channelMode = index)
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { isFocused ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (channelMode == index) KtvTheme.Accent else Color(0xFF1E293B),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = modeName,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (channelMode == index) Color.Black else Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Slider 1: 消音深度
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🎤 人声消减深度", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("${(cutDepth * 100).toInt()}%", fontSize = 14.sp, color = KtvTheme.Accent, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = cutDepth,
+                    onValueChange = {
+                        cutDepth = it
+                    },
+                    onValueChangeFinished = {
+                        KtvPlayerManager.updateDspSettings(
+                            dspSettings.copy(vocalCutDepth = cutDepth)
+                        )
+                    },
+                    colors = SliderDefaults.colors(
+                        thumbColor = KtvTheme.Accent,
+                        activeTrackColor = KtvTheme.Accent,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    )
+                )
+
+                // Slider 2: 低音丰满度
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🥁 伴奏低音丰满度", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("${(bassBoost * 100).toInt()}%", fontSize = 14.sp, color = KtvTheme.Accent, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = bassBoost,
+                    onValueChange = {
+                        bassBoost = it
+                    },
+                    onValueChangeFinished = {
+                        KtvPlayerManager.updateDspSettings(
+                            dspSettings.copy(bassBoost = bassBoost)
+                        )
+                    },
+                    colors = SliderDefaults.colors(
+                        thumbColor = KtvTheme.Accent,
+                        activeTrackColor = KtvTheme.Accent,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    )
+                )
+
+                // Slider 3: 伴奏音量补偿
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔊 伴奏音量增益补偿", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("${(gainBoost * 100).toInt()}%", fontSize = 14.sp, color = KtvTheme.Accent, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = gainBoost,
+                    onValueChange = {
+                        gainBoost = it
+                    },
+                    onValueChangeFinished = {
+                        KtvPlayerManager.updateDspSettings(
+                            dspSettings.copy(gainBoost = gainBoost)
+                        )
+                    },
+                    colors = SliderDefaults.colors(
+                        thumbColor = KtvTheme.Accent,
+                        activeTrackColor = KtvTheme.Accent,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Close Button
+                TvFocusableItem(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .background(if (isFocused) KtvTheme.Accent else Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
+                    ) {
+                        Text("完成", color = if (isFocused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -634,6 +840,7 @@ fun TopBar(
     onSearchClick: () -> Unit,
     onQueueClick: () -> Unit,
     onVocalClick: () -> Unit,
+    onDspClick: () -> Unit,
     onSkipClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onReplayClick: () -> Unit,
@@ -696,6 +903,7 @@ fun TopBar(
                 isHighlighted = isVocalEliminated,
                 onClick = onVocalClick
             )
+            TopBarButton(label = "调音", icon = "🎛", onClick = onDspClick)
             TopBarButton(label = "重唱", icon = "🔄", onClick = onReplayClick)
             TopBarButton(label = "切歌", icon = "⏭", onClick = onSkipClick)
             TopBarButton(
@@ -1927,6 +2135,7 @@ fun PlaylistQueueContent(
 @Composable
 fun VideoPlayerOverlay(
     item: PlayableItem,
+    onDspClick: () -> Unit = {},
     onCloseFullscreen: () -> Unit
 ) {
     val player = KtvPlayerManager.getPlayer()
@@ -2214,7 +2423,7 @@ fun VideoPlayerOverlay(
                             )
                         }
 
-                        // Bottom Control Buttons (Play/Pause, Favorite Heart, Vocal switch, Skip, Volume)
+                        // Bottom Control Buttons (Play/Pause, Favorite Heart, Vocal switch, Dsp Tuning, Skip, Volume)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             TopBarButton(
                                 label = if (isPlaying) "暂停" else "播放",
@@ -2232,6 +2441,11 @@ fun VideoPlayerOverlay(
                                 icon = "🎤",
                                 isHighlighted = isVocalEliminated,
                                 onClick = { KtvPlayerManager.setVocalElimination(!isVocalEliminated) }
+                            )
+                            TopBarButton(
+                                label = "调音",
+                                icon = "🎛",
+                                onClick = onDspClick
                             )
                             TopBarButton(
                                 label = "切歌",

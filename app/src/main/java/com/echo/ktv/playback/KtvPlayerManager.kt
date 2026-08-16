@@ -72,6 +72,10 @@ object KtvPlayerManager {
     private val _musicVolume = MutableStateFlow(1.0f)
     val musicVolume: StateFlow<Float> = _musicVolume
 
+    // DSP Tunable Audio Settings Flow
+    private val _dspSettings = MutableStateFlow(DspSettings.DEFAULT)
+    val dspSettings: StateFlow<DspSettings> = _dspSettings
+
     // Playback state
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
@@ -315,6 +319,7 @@ object KtvPlayerManager {
     private fun startPlayback(url: String, hash: String = "") {
         activeOriginalUrl = url
         activeAccFileUrl = ""
+        activeHash = hash
         val context = appContext
 
         scope.launch(Dispatchers.Main) {
@@ -329,14 +334,43 @@ object KtvPlayerManager {
             }
         }
 
-        // Trigger background accompaniment generation
+        // Trigger background accompaniment generation with active DSP settings
         if (context != null && hash.isNotEmpty()) {
-            KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash) { result ->
+            KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash, _dspSettings.value) { result ->
                 result.onSuccess { accFile ->
                     activeAccFileUrl = "file:///" + accFile.absolutePath
                     if (_isVocalEliminated.value) {
                         applyVocalEliminationSwitch(true)
                     }
+                }
+            }
+        }
+    }
+
+    fun updateDspSettings(newSettings: DspSettings) {
+        _dspSettings.value = newSettings
+        sharedPreferences?.edit()?.putString("dsp_settings", gson.toJson(newSettings))?.apply()
+        regenerateAccompaniment()
+    }
+
+    fun resetDspSettingsToDefault() {
+        updateDspSettings(DspSettings.DEFAULT)
+        appContext?.let {
+            Toast.makeText(it, "🔄 已恢复最佳默认消音参数", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun regenerateAccompaniment() {
+        val context = appContext ?: return
+        val hash = activeHash
+        val url = activeOriginalUrl
+        if (hash.isEmpty() || url.isEmpty()) return
+
+        KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash, _dspSettings.value) { result ->
+            result.onSuccess { accFile ->
+                activeAccFileUrl = "file:///" + accFile.absolutePath
+                if (_isVocalEliminated.value) {
+                    applyVocalEliminationSwitch(true)
                 }
             }
         }
@@ -448,6 +482,14 @@ object KtvPlayerManager {
                 val listType = object : TypeToken<List<SongItem>>() {}.type
                 _localSongs.value = gson.fromJson(localJson, listType)
             }
+            val dspJson = prefs.getString("dsp_settings", null)
+            if (dspJson != null) {
+                try {
+                    _dspSettings.value = gson.fromJson(dspJson, DspSettings::class.java)
+                } catch (e: Exception) {
+                    _dspSettings.value = DspSettings.DEFAULT
+                }
+            }
         }
     }
 
@@ -495,7 +537,7 @@ object KtvPlayerManager {
         if (existing != null) {
             list.remove(existing)
             appContext?.let {
-                Toast.makeText(it, "🤍 已取消收藏: ${song.title}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(it, "已取消收藏: ${song.title}", Toast.LENGTH_SHORT).show()
             }
         } else {
             list.add(0, song)
