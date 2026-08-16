@@ -508,54 +508,109 @@ fun MainTvScreen() {
     }
 
     if (showQrDialog) {
-        AlertDialog(
-            onDismissRequest = { showQrDialog = false },
-            confirmButton = {
-                TextButton(onClick = { showQrDialog = false }) {
-                    Text("关闭", color = KtvTheme.Accent, fontWeight = FontWeight.Bold)
-                }
-            },
-            title = {
-                Text(
-                    text = "📱 手机扫码无线点歌",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    fontSize = 20.sp
-                )
-            },
-            text = {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showQrDialog = false }
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(620.dp)
+                    .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
+                    .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                    .padding(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Left Column: Large QR Code with clean white padding
                     if (qrBitmap != null) {
-                        Image(
-                            bitmap = qrBitmap.asImageBitmap(),
-                            contentDescription = "点歌二维码",
+                        Box(
                             modifier = Modifier
-                                .size(220.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                        )
+                                .size(200.dp)
+                                .background(Color.White, RoundedCornerShape(12.dp))
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = qrBitmap.asImageBitmap(),
+                                contentDescription = "点歌二维码",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "手机连接同一 WiFi 后扫码即可免 App 极速点歌",
-                        fontSize = 14.sp,
-                        color = KtvTheme.TextMuted,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = "点歌地址: http://$localIp:19985",
-                        fontSize = 13.sp,
-                        color = KtvTheme.Accent,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+
+                    Spacer(modifier = Modifier.width(24.dp))
+
+                    // Right Column: Instructions, IP URL, and Close Button
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "📱 手机扫码无线点歌",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 20.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "1. 手机与电视连接同一 WiFi",
+                            fontSize = 13.sp,
+                            color = KtvTheme.TextMuted
+                        )
+                        Text(
+                            text = "2. 微信/系统相机扫码直接点歌",
+                            fontSize = 13.sp,
+                            color = KtvTheme.TextMuted,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                        Text(
+                            text = "3. 支持手机远程搜索、切歌与调音",
+                            fontSize = 13.sp,
+                            color = KtvTheme.TextMuted,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // URL IP Badge
+                        Box(
+                            modifier = Modifier
+                                .background(KtvTheme.Accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .border(1.dp, KtvTheme.Accent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "http://$localIp:19985",
+                                fontSize = 13.sp,
+                                color = KtvTheme.Accent,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        TvFocusableItem(
+                            onClick = { showQrDialog = false },
+                            modifier = Modifier.align(Alignment.End)
+                        ) { isFocused ->
+                            Box(
+                                modifier = Modifier
+                                    .background(if (isFocused) KtvTheme.Accent else Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 22.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "关闭",
+                                    color = if (isFocused) Color.Black else Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
-            },
-            containerColor = Color(0xFF1E293B),
-            shape = RoundedCornerShape(16.dp)
-        )
+            }
+        }
     }
 }
 
