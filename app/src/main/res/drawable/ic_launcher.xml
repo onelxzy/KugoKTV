@@ -1,14 +1,140 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Cyan background circle -->
+
+    <!-- Background: Modern Luxury Squircle with Deep Violet/Cyan Gradient -->
     <path
-        android:fillColor="#00E5FF"
-        android:pathData="M54,54m-45,0a45,45 0,1 1,90 0a45,45 0,1 1,-90 0" />
-    <!-- White music note icon -->
+        android:pathData="M18,6 L90,6 A12,12 0 0 1 102,18 L102,90 A12,12 0 0 1 90,102 L18,102 A12,12 0 0 1 6,90 L6,18 A12,12 0 0 1 18,6 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:color="#1A0B2E" android:offset="0.0" />
+                <item android:color="#3B125C" android:offset="0.4" />
+                <item android:color="#0F172A" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Neon Ambient Glow Ring -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M65,35 L45,45 L45,65 C42,63.5 38.5,63.5 36,65 C33,67 33,71 36,73 C39,75 45,74 45,70 L45,52 L65,42 L65,35 Z" />
+        android:strokeWidth="2.5"
+        android:pathData="M20,8 L88,8 A10,10 0 0 1 98,18 L98,88 A10,10 0 0 1 88,98 L20,98 A10,10 0 0 1 10,88 L10,18 A10,10 0 0 1 20,8 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:color="#00F2FE" android:offset="0.0" />
+                <item android:color="#9333EA" android:offset="0.6" />
+                <item android:color="#FF007F" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Audio Waves Arc Left -->
+    <path
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M30,42 C24,48 24,60 30,66"
+        android:strokeColor="#00F2FE" />
+    <path
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M22,36 C14,46 14,62 22,72"
+        android:strokeColor="#38BDF8" />
+
+    <!-- Audio Waves Arc Right -->
+    <path
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M78,42 C84,48 84,60 78,66"
+        android:strokeColor="#FF007F" />
+    <path
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M86,36 C94,46 94,62 86,72"
+        android:strokeColor="#F43F5E" />
+
+    <!-- Dynamic Musical Note Star Accent -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M76,22 L78,28 L84,30 L78,32 L76,38 L74,32 L68,30 L74,28 Z" />
+
+    <!-- Pro Studio Microphone: Head Capsule -->
+    <path
+        android:pathData="M44,28 C44,22.5 48.5,18 54,18 C59.5,18 64,22.5 64,28 L64,46 C64,51.5 59.5,56 54,56 C48.5,56 44,51.5 44,46 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="44"
+                android:startY="18"
+                android:endX="64"
+                android:endY="56">
+                <item android:color="#00F2FE" android:offset="0.0" />
+                <item android:color="#4FACFE" android:offset="0.4" />
+                <item android:color="#0072FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Microphone Capsule Grille Mesh Lines -->
+    <path
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:pathData="M44,34 L64,34 M44,42 L64,42 M54,18 L54,56" />
+
+    <!-- Microphone Shock Mount U-Bracket -->
+    <path
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeColor="#E2E8F0"
+        android:pathData="M38,42 C38,58 70,58 70,42" />
+
+    <!-- Microphone Stand Base & Joint -->
+    <path
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeColor="#CBD5E1"
+        android:pathData="M54,57 L54,72" />
+
+    <path
+        android:fillColor="#F1F5F9"
+        android:pathData="M40,73 L68,73 A3,3 0 0 1 71,76 L71,78 L37,78 L37,76 A3,3 0 0 1 40,73 Z" />
+
+    <!-- Sleek Glowing KTV Text Badge at Bottom -->
+    <path
+        android:fillColor="#FF007F"
+        android:pathData="M34,84 L74,84 A4,4 0 0 1 78,88 L78,94 A4,4 0 0 1 74,98 L34,98 A4,4 0 0 1 30,94 L30,88 A4,4 0 0 1 34,84 Z" />
+
+    <!-- KTV text cutout / white letters simulation -->
+    <!-- Letter K -->
+    <path
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFF"
+        android:pathData="M39,87 L39,95 M44,87 L39,91 L44,95" />
+
+    <!-- Letter T -->
+    <path
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFF"
+        android:pathData="M49,87 L57,87 M53,87 L53,95" />
+
+    <!-- Letter V -->
+    <path
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFF"
+        android:pathData="M61,87 L65,95 L69,87" />
+
 </vector>

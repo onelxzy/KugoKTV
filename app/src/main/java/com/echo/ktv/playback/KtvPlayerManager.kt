@@ -182,8 +182,31 @@ object KtvPlayerManager {
         }
     }
 
+    fun moveToTop(index: Int) {
+        val list = _playlist.value.toMutableList()
+        if (index in 1 until list.size) {
+            val item = list.removeAt(index)
+            list.add(0, item)
+            _playlist.value = list
+            appContext?.let {
+                Toast.makeText(it, "🔝 已将《${item.title}》置顶为下一首播放", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun playNow(index: Int) {
+        val list = _playlist.value.toMutableList()
+        if (index in list.indices) {
+            val item = list.removeAt(index)
+            _playlist.value = list
+            appContext?.let {
+                Toast.makeText(it, "▶ 正在立即播放《${item.title}》", Toast.LENGTH_SHORT).show()
+            }
+            playItem(item)
+        }
+    }
+
     fun playNext() {
-        isHandlingPlayerError = false
         val list = _playlist.value.toMutableList()
         if (list.isEmpty()) {
             player?.stop()
@@ -195,13 +218,18 @@ object KtvPlayerManager {
 
         val nextItem = list.removeAt(0)
         _playlist.value = list
+        playItem(nextItem)
+    }
+
+    private fun playItem(item: PlayableItem) {
+        isHandlingPlayerError = false
         activeAccFileUrl = ""
 
-        val songItem = when (nextItem) {
-            is PlayableItem.Song -> nextItem.songItem
-            is PlayableItem.Mv -> SongItem(nextItem.mvItem.title, nextItem.mvItem.artist, nextItem.mvItem.mvHash, "mv", nextItem.mvItem.duration, nextItem.mvItem.mvHash)
+        val songItem = when (item) {
+            is PlayableItem.Song -> item.songItem
+            is PlayableItem.Mv -> SongItem(item.mvItem.title, item.mvItem.artist, item.mvItem.mvHash, "mv", item.mvItem.duration, item.mvItem.mvHash)
         }
-        activeHash = songItem.hash.ifEmpty { nextItem.title }
+        activeHash = songItem.hash.ifEmpty { item.title }
         addToHistory(songItem)
 
         appContext?.let {
@@ -425,7 +453,7 @@ object KtvPlayerManager {
 
     private fun addToHistory(song: SongItem) {
         val list = _history.value.toMutableList()
-        list.remove(song)
+        list.removeAll { it.title == song.title && it.artist == song.artist }
         list.add(0, song)
         if (list.size > 50) {
             list.removeAt(list.size - 1)
@@ -434,17 +462,45 @@ object KtvPlayerManager {
         saveList("history", list)
     }
 
+    fun isSongFavorited(song: SongItem): Boolean {
+        return _favorites.value.any { 
+            (it.hash.isNotEmpty() && it.hash == song.hash) || 
+            (it.title == song.title && it.artist == song.artist) 
+        }
+    }
+
+    fun isCurrentFavorited(): Boolean {
+        val current = _currentPlaying.value ?: return false
+        return when (current) {
+            is PlayableItem.Song -> isSongFavorited(current.songItem)
+            is PlayableItem.Mv -> _favorites.value.any { it.title == current.mvItem.title }
+        }
+    }
+
+    fun toggleCurrentFavorite() {
+        val current = _currentPlaying.value ?: return
+        val songItem = when (current) {
+            is PlayableItem.Song -> current.songItem
+            is PlayableItem.Mv -> SongItem(current.mvItem.title, current.mvItem.artist, current.mvItem.mvHash, "mv", current.mvItem.duration, current.mvItem.mvHash)
+        }
+        toggleFavorite(songItem)
+    }
+
     fun toggleFavorite(song: SongItem) {
         val list = _favorites.value.toMutableList()
-        if (list.contains(song)) {
-            list.remove(song)
+        val existing = list.firstOrNull { 
+            (it.hash.isNotEmpty() && it.hash == song.hash) || 
+            (it.title == song.title && it.artist == song.artist) 
+        }
+        if (existing != null) {
+            list.remove(existing)
             appContext?.let {
-                Toast.makeText(it, "已取消收藏: ${song.title}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(it, "🤍 已取消收藏: ${song.title}", Toast.LENGTH_SHORT).show()
             }
         } else {
-            list.add(song)
+            list.add(0, song)
             appContext?.let {
-                Toast.makeText(it, "已添加到收藏: ${song.title}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(it, "❤️ 已添加到收藏: ${song.title}", Toast.LENGTH_SHORT).show()
             }
         }
         _favorites.value = list
