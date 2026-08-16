@@ -83,14 +83,14 @@ class KtvServerService : Service() {
                     var error: Throwable? = null
                     var searchResults: Any = emptyList<Any>()
 
-                    if (type == "song") {
-                        KugouApi.searchSong(query) { result ->
+                    if (type == "singer") {
+                        KugouApi.searchSinger(query) { result ->
                             result.onSuccess { searchResults = it }
                             result.onFailure { error = it }
                             latch.countDown()
                         }
                     } else {
-                        KugouApi.searchMV(query) { result ->
+                        KugouApi.searchSong(query) { result ->
                             result.onSuccess { searchResults = it }
                             result.onFailure { error = it }
                             latch.countDown()
