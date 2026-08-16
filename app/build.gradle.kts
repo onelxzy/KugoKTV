@@ -89,6 +89,9 @@ dependencies {
     // ZXing (for QR Code generation)
     implementation("com.google.zxing:core:3.5.1")
 
+    // Coil (Image loading for singer avatars)
+    implementation("io.coil-kt:coil-compose:2.4.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

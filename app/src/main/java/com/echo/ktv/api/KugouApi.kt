@@ -35,7 +35,8 @@ data class MvItem(
 data class SingerItem(
     val singerName: String,
     val singerId: Int,
-    val imgUrl: String
+    val imgUrl: String,
+    val songCount: Int = 0
 )
 
 data class MvStreamResult(
@@ -78,8 +79,8 @@ object KugouApi {
         return default
     }
 
-    // Search songs via mobilecdn endpoint (reliable, returns album_audio_id & mvhash)
-    fun searchSong(keyword: String, callback: (Result<List<SongItem>>) -> Unit) {
+    // Search songs via mobilecdn endpoint (supports page and pageSize)
+    fun searchSong(keyword: String, page: Int = 1, pageSize: Int = 30, callback: (Result<List<SongItem>>) -> Unit) {
         if (keyword.isBlank()) {
             mainHandler.post { callback(Result.success(emptyList())) }
             return
@@ -87,8 +88,8 @@ object KugouApi {
 
         val urlBuilder = "http://mobilecdn.kugou.com/api/v3/search/song".toHttpUrl().newBuilder().apply {
             addQueryParameter("keyword", keyword)
-            addQueryParameter("page", "1")
-            addQueryParameter("pagesize", "30")
+            addQueryParameter("page", page.toString())
+            addQueryParameter("pagesize", pageSize.toString())
         }
 
         val request = Request.Builder()
@@ -136,17 +137,83 @@ object KugouApi {
         })
     }
 
-    // Search singers via mobilecdn endpoint
-    fun searchSinger(keyword: String, callback: (Result<List<SingerItem>>) -> Unit) {
+    // Search singers via official Author API with high-resolution Avatars & Song counts
+    fun searchSinger(keyword: String, page: Int = 1, pageSize: Int = 30, callback: (Result<List<SingerItem>>) -> Unit) {
         if (keyword.isBlank()) {
             mainHandler.post { callback(Result.success(emptyList())) }
             return
         }
 
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val params = mapOf(
+            "appid" to SignatureUtils.LITE_APP_ID,
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "dfid" to "-",
+            "keyword" to keyword,
+            "mid" to "undefined",
+            "page" to page.toString(),
+            "pagesize" to pageSize.toString(),
+            "platform" to "AndroidFilter",
+            "uuid" to "-"
+        )
+        val signature = SignatureUtils.signatureAndroidParams(params, "", isLite = true)
+
+        val urlBuilder = "https://gateway.kugou.com/v1/search/author".toHttpUrl().newBuilder().apply {
+            params.forEach { (k, v) -> addQueryParameter(k, v) }
+            addQueryParameter("signature", signature)
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .addHeader("x-router", "complexsearch.kugou.com")
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                searchSingerFallback(keyword, page, pageSize, callback)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val data = json.getAsJsonObject("data")
+                    val lists = data?.getAsJsonArray("lists") ?: JsonArray()
+
+                    val result = mutableListOf<SingerItem>()
+                    for (elem in lists) {
+                        if (!elem.isJsonObject) continue
+                        val obj = elem.asJsonObject
+                        val name = obj.getSafeString("AuthorName", "singername", "name")
+                        val id = obj.getSafeInt("AuthorId", "singerid", "id", default = 0)
+                        var avatar = obj.getSafeString("Avatar", "imgurl", "pic")
+                        avatar = avatar.replace("{size}", "240")
+                        val audioCount = obj.getSafeInt("AudioCount", default = 0)
+
+                        if (name.isNotEmpty()) {
+                            result.add(SingerItem(name, id, avatar, audioCount))
+                        }
+                    }
+
+                    if (result.isEmpty()) {
+                        searchSingerFallback(keyword, page, pageSize, callback)
+                    } else {
+                        mainHandler.post { callback(Result.success(result)) }
+                    }
+                } catch (e: Exception) {
+                    searchSingerFallback(keyword, page, pageSize, callback)
+                }
+            }
+        })
+    }
+
+    private fun searchSingerFallback(keyword: String, page: Int = 1, pageSize: Int = 30, callback: (Result<List<SingerItem>>) -> Unit) {
         val urlBuilder = "http://mobilecdn.kugou.com/api/v3/search/singer".toHttpUrl().newBuilder().apply {
             addQueryParameter("keyword", keyword)
-            addQueryParameter("page", "1")
-            addQueryParameter("pagesize", "30")
+            addQueryParameter("page", page.toString())
+            addQueryParameter("pagesize", pageSize.toString())
         }
 
         val request = Request.Builder()
@@ -170,15 +237,126 @@ object KugouApi {
                         val itemObj = element.asJsonObject
                         val name = itemObj.getSafeString("singername", "name")
                         val id = itemObj.getSafeInt("singerid", "id", default = 0)
-                        val imgUrl = itemObj.getSafeString("imgurl", "pic")
                         if (name.isNotEmpty()) {
-                            result.add(SingerItem(name, id, imgUrl))
+                            result.add(SingerItem(name, id, "", 0))
                         }
                     }
 
                     mainHandler.post { callback(Result.success(result)) }
                 } catch (e: Exception) {
                     mainHandler.post { callback(Result.success(emptyList())) }
+                }
+            }
+        })
+    }
+
+    // Retrieve full artist discography with total song count and pagination
+    fun getSingerSongs(
+        singerId: Int,
+        singerName: String,
+        page: Int = 1,
+        pageSize: Int = 30,
+        callback: (Result<Pair<List<SongItem>, Int>>) -> Unit
+    ) {
+        if (singerId <= 0) {
+            searchSong(singerName, page, pageSize) { res ->
+                res.onSuccess { list ->
+                    mainHandler.post { callback(Result.success(Pair(list, list.size))) }
+                }
+                res.onFailure {
+                    mainHandler.post { callback(Result.failure(it)) }
+                }
+            }
+            return
+        }
+
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val key = CryptoUtils.md5(clientTime + SignatureUtils.LITE_CLIENT_VER + SignatureUtils.LITE_APP_ID + "undefined" + "1005undefined03116")
+
+        val dataObj = JsonObject().apply {
+            addProperty("appid", SignatureUtils.LITE_APP_ID)
+            addProperty("clientver", SignatureUtils.LITE_CLIENT_VER)
+            addProperty("mid", "undefined")
+            addProperty("clienttime", clientTime)
+            addProperty("key", key)
+            addProperty("author_id", singerId.toString())
+            addProperty("pagesize", pageSize)
+            addProperty("page", page)
+            addProperty("sort", 1)
+            addProperty("area_code", "all")
+        }
+        val dataJson = gson.toJson(dataObj)
+
+        val defaultParams = mapOf(
+            "appid" to SignatureUtils.LITE_APP_ID,
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "dfid" to "-",
+            "mid" to "undefined",
+            "uuid" to "-"
+        )
+        val signature = SignatureUtils.signatureAndroidParams(defaultParams, dataJson, isLite = true)
+
+        val urlBuilder = "https://gateway.kugou.com/kmr/v1/audio_group/author".toHttpUrl().newBuilder().apply {
+            defaultParams.forEach { (k, v) -> addQueryParameter(k, v) }
+            addQueryParameter("signature", signature)
+        }
+
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val requestBody = dataJson.toRequestBody(mediaType)
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .post(requestBody)
+            .addHeader("x-router", "openapi.kugou.com")
+            .addHeader("kg-tid", "220")
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                searchSong(singerName, page, pageSize) { res ->
+                    res.onSuccess { list -> mainHandler.post { callback(Result.success(Pair(list, list.size))) } }
+                    res.onFailure { mainHandler.post { callback(Result.failure(it)) } }
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val total = json.get("total")?.asInt ?: 0
+                    val dataArr = json.getAsJsonArray("data") ?: JsonArray()
+
+                    val result = mutableListOf<SongItem>()
+                    for (elem in dataArr) {
+                        if (!elem.isJsonObject) continue
+                        val obj = elem.asJsonObject
+                        val title = obj.getSafeString("audio_name", "songname", "title")
+                        val artist = obj.getSafeString("author_name", "singername")
+                        val hash = obj.getSafeString("hash", "hash_128", "hash_320")
+                        val mvHash = obj.getSafeString("video_hash", "mvhash")
+                        val albumAudioId = obj.getSafeString("album_audio_id", "audio_id")
+                        val duration = (obj.getSafeInt("timelength", "duration", default = 240000)) / 1000
+
+                        if (hash.isNotEmpty() && title.isNotEmpty()) {
+                            result.add(SongItem(title, if (artist.isNotEmpty()) artist else singerName, hash, albumAudioId, duration, mvHash))
+                        }
+                    }
+
+                    if (result.isEmpty()) {
+                        searchSong(singerName, page, pageSize) { res ->
+                            res.onSuccess { list -> mainHandler.post { callback(Result.success(Pair(list, list.size))) } }
+                            res.onFailure { mainHandler.post { callback(Result.failure(it)) } }
+                        }
+                    } else {
+                        mainHandler.post { callback(Result.success(Pair(result, if (total > 0) total else result.size))) }
+                    }
+                } catch (e: Exception) {
+                    searchSong(singerName, page, pageSize) { res ->
+                        res.onSuccess { list -> mainHandler.post { callback(Result.success(Pair(list, list.size))) } }
+                        res.onFailure { mainHandler.post { callback(Result.failure(it)) } }
+                    }
                 }
             }
         })

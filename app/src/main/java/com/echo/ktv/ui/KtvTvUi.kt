@@ -40,6 +40,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -170,6 +171,13 @@ fun MainTvScreen() {
     var currentCategoryName by remember { mutableStateOf("") }
     var showQrDialog by remember { mutableStateOf(false) }
     var showDspDialog by remember { mutableStateOf(false) }
+
+    var currentSingerId by remember { mutableStateOf(0) }
+    var currentSingerName by remember { mutableStateOf("") }
+    var currentSingerPage by remember { mutableStateOf(1) }
+    var totalSongsCount by remember { mutableStateOf(0) }
+    var hasMoreSongs by remember { mutableStateOf(false) }
+    var isLoadingMoreSongs by remember { mutableStateOf(false) }
 
     val playlist by KtvPlayerManager.playlist.collectAsState()
     val currentPlaying by KtvPlayerManager.currentPlaying.collectAsState()
@@ -451,6 +459,32 @@ fun MainTvScreen() {
                             "songs_list" -> SongsListGrid(
                                 title = listTitle,
                                 songs = displaySongsList,
+                                totalCount = if (totalSongsCount > 0) totalSongsCount else displaySongsList.size,
+                                hasMore = hasMoreSongs,
+                                isLoadingMore = isLoadingMoreSongs,
+                                onLoadMore = {
+                                    if (!isLoadingMoreSongs && hasMoreSongs) {
+                                        isLoadingMoreSongs = true
+                                        val nextPage = currentSingerPage + 1
+                                        KugouApi.getSingerSongs(currentSingerId, currentSingerName, page = nextPage, pageSize = 30) { result ->
+                                            isLoadingMoreSongs = false
+                                            result.onSuccess { (list, total) ->
+                                                if (list.isNotEmpty()) {
+                                                    currentSingerPage = nextPage
+                                                    displaySongsList = displaySongsList + list
+                                                    totalSongsCount = total
+                                                    hasMoreSongs = displaySongsList.size < total
+                                                } else {
+                                                    hasMoreSongs = false
+                                                }
+                                            }
+                                            result.onFailure {
+                                                isLoadingMoreSongs = false
+                                                Toast.makeText(context, "加载更多失败，请重试", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
                                 onSelect = { song -> KtvPlayerManager.addSongToQueue(song) },
                                 onBack = { currentTab = "home" }
                             )
@@ -505,10 +539,21 @@ fun MainTvScreen() {
                                 singers = searchSingers,
                                 onSelectSong = { song -> KtvPlayerManager.addSongToQueue(song) },
                                 onSelectSinger = { singer ->
-                                    searchMode = "song"
-                                    searchKeyword = singer.singerName
-                                    KugouApi.searchSong(singer.singerName) { result ->
-                                        result.onSuccess { searchSongs = it }
+                                    currentSingerId = singer.singerId
+                                    currentSingerName = singer.singerName
+                                    currentSingerPage = 1
+                                    listTitle = "👤 ${singer.singerName} - 全部歌曲"
+                                    currentTab = "songs_list"
+                                    Toast.makeText(context, "正在加载 ${singer.singerName} 的全部曲目...", Toast.LENGTH_SHORT).show()
+                                    KugouApi.getSingerSongs(singer.singerId, singer.singerName, page = 1, pageSize = 30) { result ->
+                                        result.onSuccess { (list, total) ->
+                                            displaySongsList = list
+                                            totalSongsCount = total
+                                            hasMoreSongs = list.size < total
+                                        }
+                                        result.onFailure {
+                                            Toast.makeText(context, "获取曲库失败: ${it.message}", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 },
                                 onBack = { currentTab = "home" }
@@ -1201,6 +1246,10 @@ fun TallFeatureCard(
 fun SongsListGrid(
     title: String,
     songs: List<SongItem>,
+    totalCount: Int = songs.size,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: (() -> Unit)? = null,
     onSelect: (SongItem) -> Unit,
     onBack: () -> Unit
 ) {
@@ -1222,7 +1271,7 @@ fun SongsListGrid(
                             .background(Color(0xFF1E293B), RoundedCornerShape(8.dp))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("← 返回首页", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("← 返回", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(modifier = Modifier.width(14.dp))
@@ -1235,7 +1284,7 @@ fun SongsListGrid(
             }
 
             Text(
-                text = "共 ${songs.size} 首歌曲",
+                text = if (totalCount > songs.size) "已加载 ${songs.size} / 共 $totalCount 首" else "共 ${songs.size} 首歌曲",
                 fontSize = 13.sp,
                 color = KtvTheme.TextMuted
             )
@@ -1364,6 +1413,44 @@ fun SongsListGrid(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text("+ 点歌", color = KtvTheme.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Load More Button spanning across 2 columns
+                if (hasMore && onLoadMore != null) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                        TvFocusableItem(
+                            onClick = onLoadMore,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp)
+                        ) { isFocused ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp)
+                                    .background(
+                                        if (isFocused) KtvTheme.Accent else Color(0xFF1E293B),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .border(1.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isLoadingMore) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("⏳", fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("正在加载更多歌曲...", color = if (isFocused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("⬇️", fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("点击加载更多歌曲 (已加载 ${songs.size} / 共 $totalCount 首)", color = if (isFocused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1817,24 +1904,36 @@ fun SearchContent(
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(Color(0xFF131C2E))
+                                            .background(Color(0xFF131C2E), RoundedCornerShape(12.dp))
                                             .padding(14.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(56.dp)
-                                                .background(
-                                                    Brush.linearGradient(
-                                                        colors = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899))
+                                        if (singer.imgUrl.isNotEmpty()) {
+                                            AsyncImage(
+                                                model = singer.imgUrl,
+                                                contentDescription = singer.singerName,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(64.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.6f), CircleShape)
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(64.dp)
+                                                    .background(
+                                                        Brush.linearGradient(
+                                                            colors = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899))
+                                                        ),
+                                                        CircleShape
                                                     ),
-                                                    CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("👤", fontSize = 28.sp)
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("👤", fontSize = 28.sp)
+                                            }
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
                                         Text(
                                             text = singer.singerName,
                                             fontSize = 15.sp,
@@ -1844,9 +1943,10 @@ fun SearchContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "点击查看该歌手热门歌曲",
-                                            fontSize = 11.sp,
-                                            color = KtvTheme.TextMuted,
+                                            text = if (singer.songCount > 0) "共 ${singer.songCount} 首曲目" else "点击查看曲库",
+                                            fontSize = 12.sp,
+                                            color = if (singer.songCount > 0) KtvTheme.Accent else KtvTheme.TextMuted,
+                                            fontWeight = if (singer.songCount > 0) FontWeight.Bold else FontWeight.Normal,
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
