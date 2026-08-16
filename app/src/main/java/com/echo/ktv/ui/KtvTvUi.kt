@@ -514,7 +514,7 @@ fun TopBar(
         }
 
         // Action Buttons Row
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TopBarButton(label = "搜索", icon = "🔍", onClick = onSearchClick)
             TopBarButton(label = "已点 ($selectedSize)", icon = "📋", onClick = onQueueClick)
             TopBarButton(label = "扫码点歌", icon = "📱", onClick = onQrClick)
@@ -553,16 +553,18 @@ fun TopBarButton(
                     },
                     RoundedCornerShape(8.dp)
                 )
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(icon, fontSize = 14.sp)
+            Text(icon, fontSize = 13.sp)
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                label,
-                fontSize = 14.sp,
+                text = label,
+                fontSize = 13.sp,
                 color = if (isFocused) Color.Black else Color.White,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
