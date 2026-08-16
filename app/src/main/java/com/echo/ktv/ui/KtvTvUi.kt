@@ -509,11 +509,12 @@ fun MainTvScreen() {
 
     if (showQrDialog) {
         androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showQrDialog = false }
+            onDismissRequest = { showQrDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
                 modifier = Modifier
-                    .width(620.dp)
+                    .width(540.dp)
                     .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
                     .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                     .padding(24.dp)
@@ -526,7 +527,7 @@ fun MainTvScreen() {
                     if (qrBitmap != null) {
                         Box(
                             modifier = Modifier
-                                .size(200.dp)
+                                .size(180.dp)
                                 .background(Color.White, RoundedCornerShape(12.dp))
                                 .padding(8.dp),
                             contentAlignment = Alignment.Center
@@ -539,7 +540,7 @@ fun MainTvScreen() {
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(24.dp))
+                    Spacer(modifier = Modifier.width(20.dp))
 
                     // Right Column: Instructions, IP URL, and Close Button
                     Column(
@@ -547,28 +548,17 @@ fun MainTvScreen() {
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = "📱 手机扫码无线点歌",
+                            text = "📱 手机扫码点歌",
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             fontSize = 20.sp
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "1. 手机与电视连接同一 WiFi",
-                            fontSize = 13.sp,
-                            color = KtvTheme.TextMuted
-                        )
-                        Text(
-                            text = "2. 微信/系统相机扫码直接点歌",
+                            text = "手机连接同一 WiFi 即可扫码无线点歌",
                             fontSize = 13.sp,
                             color = KtvTheme.TextMuted,
-                            modifier = Modifier.padding(top = 3.dp)
-                        )
-                        Text(
-                            text = "3. 支持手机远程搜索、切歌与调音",
-                            fontSize = 13.sp,
-                            color = KtvTheme.TextMuted,
-                            modifier = Modifier.padding(top = 3.dp)
+                            lineHeight = 18.sp
                         )
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -588,7 +578,7 @@ fun MainTvScreen() {
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
                         TvFocusableItem(
                             onClick = { showQrDialog = false },
@@ -1395,8 +1385,8 @@ fun SearchContent(
                         decorationBox = { innerTextField ->
                             if (keyword.isEmpty()) {
                                 Text(
-                                    text = "支持键鼠打字或左侧拼音缩写点歌...",
-                                    fontSize = 14.sp,
+                                    text = "搜索歌曲 / 歌手...",
+                                    fontSize = 15.sp,
                                     color = KtvTheme.TextMuted
                                 )
                             }
@@ -1477,7 +1467,7 @@ fun SearchContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (keyword.isEmpty()) "在上方输入框打字或在左侧键盘输入缩写，点击【开始搜索】" else "未搜索到相关歌曲",
+                                text = if (keyword.isEmpty()) "输入歌名或拼音缩写开始点歌" else "未搜索到相关歌曲",
                                 color = KtvTheme.TextMuted,
                                 fontSize = 15.sp
                             )
@@ -1564,7 +1554,7 @@ fun SearchContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (keyword.isEmpty()) "在上方输入框打字或在左侧键盘输入缩写，点击【开始搜索】" else "未搜索到相关歌手",
+                                text = if (keyword.isEmpty()) "输入歌手姓名或拼音缩写开始点歌" else "未搜索到相关歌手",
                                 color = KtvTheme.TextMuted,
                                 fontSize = 15.sp
                             )
