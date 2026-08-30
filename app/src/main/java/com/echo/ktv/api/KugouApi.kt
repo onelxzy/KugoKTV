@@ -802,122 +802,135 @@ object KugouApi {
             return
         }
 
-        val cleanTitle = songTitle.replace(Regex("\\(.*\\)|?.*??|\\[.*\\]|?.*??|<.*>|?.*??|伴奏|伴唱|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
-        val query = if (cleanTitle.isNotEmpty()) "$cleanTitle 伴奏" else "$songTitle 伴奏"
+        try {
+            val cleanRegex = Regex("\\(.*?\\)|\uFF08.*?\uFF09|\\[.*?\\]|\u3010.*?\u3011|<.*?>|\u300A.*?\u300B|\u4F34\u594F|\u4F34\u5531|Instrumental|inst|OFF VOCAL|Karaoke", RegexOption.IGNORE_CASE)
+            val cleanTitle = songTitle.replace(cleanRegex, "").trim()
+            val query = if (cleanTitle.isNotEmpty()) "$cleanTitle 伴奏" else "$songTitle 伴奏"
 
-        searchSong(query, page = 1, pageSize = 30) { result ->
-            result.onSuccess { list ->
-                // Filter candidates
-                val candidates = list.filter { item ->
-                    val t = item.title
-                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
-                            t.contains("Instrumental", ignoreCase = true) ||
-                            t.contains("inst", ignoreCase = true) ||
-                            t.contains("OFF VOCAL", ignoreCase = true) ||
-                            t.contains("Karaoke", ignoreCase = true)
-                    if (!hasAccTag) return@filter false
+            searchSong(query, page = 1, pageSize = 30) { result ->
+                result.onSuccess { list ->
+                    try {
+                        // Filter candidates
+                        val candidates = list.filter { item ->
+                            val t = item.title
+                            val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
+                                    t.contains("Instrumental", ignoreCase = true) ||
+                                    t.contains("inst", ignoreCase = true) ||
+                                    t.contains("OFF VOCAL", ignoreCase = true) ||
+                                    t.contains("Karaoke", ignoreCase = true)
+                            if (!hasAccTag) return@filter false
 
-                    val itemCleanTitle = t.replace(Regex("\\(.*\\)|?.*??|\\[.*\\]|?.*??|<.*>|?.*??|伴奏|伴唱|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
-                    val titleMatched = itemCleanTitle.equals(cleanTitle, ignoreCase = true) ||
-                            itemCleanTitle.contains(cleanTitle, ignoreCase = true) ||
-                            cleanTitle.contains(itemCleanTitle, ignoreCase = true)
-                    if (!titleMatched) return@filter false
+                            val itemCleanTitle = t.replace(cleanRegex, "").trim()
+                            val titleMatched = itemCleanTitle.equals(cleanTitle, ignoreCase = true) ||
+                                    itemCleanTitle.contains(cleanTitle, ignoreCase = true) ||
+                                    cleanTitle.contains(itemCleanTitle, ignoreCase = true)
+                            if (!titleMatched) return@filter false
 
-                    val artistClean = artist.replace(Regex("\\s+"), "").lowercase()
-                    val itemArtistClean = item.artist.replace(Regex("\\s+"), "").lowercase()
-                    val artistMatched = if (artistClean.isEmpty() || artistClean == "群星" || itemArtistClean.isEmpty() || itemArtistClean == "群星" || itemArtistClean == "网络歌手") {
-                        true
-                    } else {
-                        artistClean.contains(itemArtistClean) || itemArtistClean.contains(artistClean) || t.lowercase().contains(artistClean)
-                    }
-                    if (!artistMatched) return@filter false
-
-                    if (originalDuration > 0 && item.duration > 0) {
-                        val durationDiff = Math.abs(item.duration - originalDuration)
-                        if (durationDiff > 8) return@filter false
-                    }
-
-                    true
-                }
-
-                if (candidates.isEmpty()) {
-                    // Try secondary fallback search with "$artist $cleanTitle ??" if first attempt had no match
-                    val query2 = "$artist $cleanTitle 伴奏".trim()
-                    if (query2 != query && cleanTitle.isNotEmpty()) {
-                        searchSong(query2, page = 1, pageSize = 30) { res2 ->
-                            res2.onSuccess { list2 ->
-                                val candidates2 = list2.filter { item ->
-                                    val t = item.title
-                                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
-                                            t.contains("Instrumental", ignoreCase = true) ||
-                                            t.contains("inst", ignoreCase = true) ||
-                                            t.contains("OFF VOCAL", ignoreCase = true) ||
-                                            t.contains("Karaoke", ignoreCase = true)
-                                    if (!hasAccTag) return@filter false
-                                    if (originalDuration > 0 && item.duration > 0) {
-                                        val durationDiff = Math.abs(item.duration - originalDuration)
-                                        if (durationDiff > 8) return@filter false
-                                    }
-                                    true
-                                }
-                                if (candidates2.isNotEmpty()) {
-                                    val best2 = candidates2.minByOrNull { item ->
-                                        val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
-                                        val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
-                                        durDiff + artistBonus
-                                    } ?: candidates2.first()
-
-                                    fetchAudioStreamUrlByHash(best2.hash) { streamResult ->
-                                        streamResult.onSuccess { url ->
-                                            mainHandler.post {
-                                                callback(Result.success(AccompanimentMatchResult(best2.title, best2.artist, url, best2.hash, best2.duration)))
-                                            }
-                                        }
-                                        streamResult.onFailure {
-                                            mainHandler.post { callback(Result.failure(it)) }
-                                        }
-                                    }
-                                } else {
-                                    mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
-                                }
+                            val artistClean = artist.replace(Regex("\\s+"), "").lowercase()
+                            val itemArtistClean = item.artist.replace(Regex("\\s+"), "").lowercase()
+                            val artistMatched = if (artistClean.isEmpty() || artistClean == "群星" || itemArtistClean.isEmpty() || itemArtistClean == "群星" || itemArtistClean == "网络歌手") {
+                                true
+                            } else {
+                                artistClean.contains(itemArtistClean) || itemArtistClean.contains(artistClean) || t.lowercase().contains(artistClean)
                             }
-                            res2.onFailure {
+                            if (!artistMatched) return@filter false
+
+                            if (originalDuration > 0 && item.duration > 0) {
+                                val durationDiff = Math.abs(item.duration - originalDuration)
+                                if (durationDiff > 8) return@filter false
+                            }
+
+                            true
+                        }
+
+                        if (candidates.isEmpty()) {
+                            // Try secondary fallback search with "$artist $cleanTitle ??"
+                            val query2 = "$artist $cleanTitle 伴奏".trim()
+                            if (query2 != query && cleanTitle.isNotEmpty()) {
+                                searchSong(query2, page = 1, pageSize = 30) { res2 ->
+                                    res2.onSuccess { list2 ->
+                                        try {
+                                            val candidates2 = list2.filter { item ->
+                                                val t = item.title
+                                                val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
+                                                        t.contains("Instrumental", ignoreCase = true) ||
+                                                        t.contains("inst", ignoreCase = true) ||
+                                                        t.contains("OFF VOCAL", ignoreCase = true) ||
+                                                        t.contains("Karaoke", ignoreCase = true)
+                                                if (!hasAccTag) return@filter false
+                                                if (originalDuration > 0 && item.duration > 0) {
+                                                    val durationDiff = Math.abs(item.duration - originalDuration)
+                                                    if (durationDiff > 8) return@filter false
+                                                }
+                                                true
+                                            }
+                                            if (candidates2.isNotEmpty()) {
+                                                val best2 = candidates2.minByOrNull { item ->
+                                                    val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
+                                                    val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
+                                                    durDiff + artistBonus
+                                                } ?: candidates2.first()
+
+                                                fetchAudioStreamUrlByHash(best2.hash) { streamResult ->
+                                                    streamResult.onSuccess { url ->
+                                                        mainHandler.post {
+                                                            callback(Result.success(AccompanimentMatchResult(best2.title, best2.artist, url, best2.hash, best2.duration)))
+                                                        }
+                                                    }
+                                                    streamResult.onFailure {
+                                                        mainHandler.post { callback(Result.failure(it)) }
+                                                    }
+                                                }
+                                            } else {
+                                                mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
+                                            }
+                                        } catch (e: Exception) {
+                                            mainHandler.post { callback(Result.failure(e)) }
+                                        }
+                                    }
+                                    res2.onFailure {
+                                        mainHandler.post { callback(Result.failure(it)) }
+                                    }
+                                }
+                            } else {
+                                mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
+                            }
+                            return@onSuccess
+                        }
+
+                        // Pick the best match
+                        val best = candidates.minByOrNull { item ->
+                            val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
+                            val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
+                            durDiff + artistBonus
+                        } ?: candidates.first()
+
+                        // Resolve audio stream URL
+                        fetchAudioStreamUrlByHash(best.hash) { streamResult ->
+                            streamResult.onSuccess { url ->
+                                val match = AccompanimentMatchResult(
+                                    title = best.title,
+                                    artist = best.artist,
+                                    url = url,
+                                    hash = best.hash,
+                                    duration = best.duration
+                                )
+                                mainHandler.post { callback(Result.success(match)) }
+                            }
+                            streamResult.onFailure {
                                 mainHandler.post { callback(Result.failure(it)) }
                             }
                         }
-                    } else {
-                        mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
-                    }
-                    return@onSuccess
-                }
-
-                // Pick the best match
-                val best = candidates.minByOrNull { item ->
-                    val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
-                    val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
-                    durDiff + artistBonus
-                } ?: candidates.first()
-
-                // Resolve audio stream URL
-                fetchAudioStreamUrlByHash(best.hash) { streamResult ->
-                    streamResult.onSuccess { url ->
-                        val match = AccompanimentMatchResult(
-                            title = best.title,
-                            artist = best.artist,
-                            url = url,
-                            hash = best.hash,
-                            duration = best.duration
-                        )
-                        mainHandler.post { callback(Result.success(match)) }
-                    }
-                    streamResult.onFailure {
-                        mainHandler.post { callback(Result.failure(it)) }
+                    } catch (e: Exception) {
+                        mainHandler.post { callback(Result.failure(e)) }
                     }
                 }
+                result.onFailure {
+                    mainHandler.post { callback(Result.failure(it)) }
+                }
             }
-            result.onFailure {
-                mainHandler.post { callback(Result.failure(it)) }
-            }
+        } catch (e: Exception) {
+            mainHandler.post { callback(Result.failure(e)) }
         }
     }
 
@@ -928,7 +941,7 @@ object KugouApi {
             return
         }
 
-        val cleanTitle = songTitle.replace(Regex("\\(.*\\)|（.*）|\\[.*\\]|【.*】|《.*》"), "").trim()
+        val cleanTitle = songTitle.replace(Regex("\\(.*?\\)|\uFF08.*?\uFF09|\\[.*?\\]|\u3010.*?\u3011|\u300A.*?\u300B"), "").trim()
         val query = if (cleanTitle.isNotEmpty()) cleanTitle else songTitle
         val searchUrl = "http://music.163.com/api/search/get/web?s=${URLEncoder.encode(query, "UTF-8")}&type=1&limit=1"
         val request = Request.Builder()
