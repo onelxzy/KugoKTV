@@ -707,80 +707,58 @@ object KugouApi {
 
     // Resolve pure audio stream URL via Kugou Tracker API (/v2/interface/index with ismp3=1)
     fun fetchAudioStreamUrlByHash(audioHash: String, callback: (Result<String>) -> Unit) {
-        val lowerHash = audioHash.lowercase()
-        val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val mid = UserManager.mid
-        val dfid = UserManager.dfid
-        val user = UserManager.userProfile.value
-        val userId = user?.userId?.toString() ?: "0"
-        val token = user?.token ?: ""
-        val key = SignatureUtils.signKey(lowerHash, mid = mid, userId = userId, isLite = true)
+        val lowerHash = audioHash.lowercase().trim()
+        if (lowerHash.isEmpty()) {
+            mainHandler.post { callback(Result.failure(Exception("Audio hash is empty"))) }
+            return
+        }
 
-        val vParams = mutableMapOf(
-            "appid" to SignatureUtils.LITE_APP_ID,
-            "backupdomain" to "1",
-            "clienttime" to clientTime,
-            "clientver" to SignatureUtils.LITE_CLIENT_VER,
-            "cmd" to "123",
-            "dfid" to dfid,
-            "ext" to "mp3",
-            "hash" to lowerHash,
-            "ismp3" to "1",
-            "key" to key,
-            "mid" to mid,
-            "pid" to "1",
-            "type" to "1",
-            "uuid" to "-"
+        val key = CryptoUtils.md5("${lowerHash}kgcloudv2")
+        val trackerUrls = listOf(
+            "http://trackercdn.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play",
+            "http://trackercdnbj.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play",
+            "http://trackersz.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play"
         )
-        if (token.isNotEmpty()) {
-            vParams["token"] = token
-            vParams["userid"] = userId
-        }
-        val signature = SignatureUtils.signatureAndroidParams(vParams, isLite = true)
 
-        val urlBuilder = "https://gateway.kugou.com/v2/interface/index".toHttpUrl().newBuilder().apply {
-            vParams.forEach { (k, v) -> addQueryParameter(k, v) }
-            addQueryParameter("signature", signature)
-        }
-
-        val request = Request.Builder()
-            .url(urlBuilder.build())
-            .addHeader("x-router", "tracker.kugou.com")
-            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
-            .addHeader("dfid", dfid)
-            .addHeader("mid", mid)
-            .addHeader("clienttime", clientTime)
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                mainHandler.post { callback(Result.failure(e)) }
+        fun tryTracker(index: Int) {
+            if (index >= trackerUrls.size) {
+                mainHandler.post { callback(Result.failure(Exception("Audio stream URL not found in Kugou tracker"))) }
+                return
             }
 
-            override fun onResponse(call: Call, response: Response) {
-                try {
-                    val body = response.body?.string() ?: ""
-                    val json = gson.fromJson(body, JsonObject::class.java)
-                    var downurl = json.get("url")?.asString
-                    if (downurl.isNullOrEmpty()) {
-                        val dataObj = json.getAsJsonObject("data")
-                        val hashObj = dataObj?.getAsJsonObject(lowerHash)
-                        downurl = hashObj?.get("downurl")?.asString
-                        if (downurl.isNullOrEmpty()) {
-                            downurl = hashObj?.getAsJsonArray("backupdownurl")?.get(0)?.asString
-                        }
-                    }
-                    if (!downurl.isNullOrEmpty()) {
-                        downurl = downurl.replace("\\/", "/")
-                        mainHandler.post { callback(Result.success(downurl)) }
-                    } else {
-                        mainHandler.post { callback(Result.failure(Exception("Audio URL not found in Kugou tracker"))) }
-                    }
-                } catch (e: Exception) {
-                    mainHandler.post { callback(Result.failure(e)) }
+            val request = Request.Builder()
+                .url(trackerUrls[index])
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .build()
+
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    tryTracker(index + 1)
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val body = response.body?.string() ?: ""
+                        val json = gson.fromJson(body, JsonObject::class.java)
+                        val status = json.get("status")?.asInt ?: 0
+                        val urls = json.getAsJsonArray("url")
+                        if (status == 1 && urls != null && urls.size() > 0) {
+                            var downurl = urls[0].asString
+                            if (!downurl.isNullOrEmpty()) {
+                                downurl = downurl.replace("\\/", "/")
+                                mainHandler.post { callback(Result.success(downurl)) }
+                                return
+                            }
+                        }
+                        tryTracker(index + 1)
+                    } catch (e: Exception) {
+                        tryTracker(index + 1)
+                    }
+                }
+            })
+        }
+
+        tryTracker(0)
     }
 
     /**
