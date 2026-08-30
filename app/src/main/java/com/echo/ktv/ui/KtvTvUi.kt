@@ -691,7 +691,7 @@ fun MainTvScreen() {
             onLogout = {
                 UserManager.logout()
                 showUserProfileDialog = false
-                Toast.makeText(context, "?? ?????", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "👋 已退出登录", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -915,8 +915,8 @@ fun TopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
-            .background(Color(0xFF131C2E).copy(alpha = 0.95f), RoundedCornerShape(12.dp))
+            .height(56.dp)
+            .background(Color(0xFF101726).copy(alpha = 0.96f), RoundedCornerShape(12.dp))
             .border(1.dp, KtvTheme.CardBorder, RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -930,13 +930,13 @@ fun TopBar(
                     .background(KtvTheme.AccentGradient, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("??", fontSize = 18.sp)
+                Text("🎤", fontSize = 18.sp)
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "?? KTV",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                text = "酷唱 KTV",
+                fontSize = 21.sp,
+                fontWeight = FontWeight.Black,
                 color = Color.White
             )
             Spacer(modifier = Modifier.width(6.dp))
@@ -965,10 +965,10 @@ fun TopBar(
                             .padding(horizontal = 10.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("??", fontSize = 12.sp)
+                        Text("👤", fontSize = 12.sp)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "?????",
+                            text = "概念版登录",
                             fontSize = 12.sp,
                             color = if (isFocused) Color.Black else Color(0xFF94A3B8),
                             fontWeight = FontWeight.Bold,
@@ -988,7 +988,7 @@ fun TopBar(
                             .padding(horizontal = 10.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(if (userProfile.isVip) "??" else "??", fontSize = 12.sp)
+                        Text(if (userProfile.isVip) "👑" else "👤", fontSize = 12.sp)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = userProfile.nickname.take(4),
@@ -1011,26 +1011,26 @@ fun TopBar(
             }
         }
 
-        // Action Buttons Row (6 Essential Buttons with compact horizontal spacing)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TopBarButton(label = "??", icon = "??", onClick = onSearchClick)
+        // Action Buttons Row (6 Essential Buttons)
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            TopBarButton(label = "搜索", icon = "🔍", onClick = onSearchClick)
             TopBarButton(
-                label = "?? ($selectedSize)",
-                icon = "??",
+                label = "已点 ($selectedSize)",
+                icon = "📋",
                 isHighlighted = selectedSize > 0,
                 onClick = onQueueClick
             )
-            TopBarButton(label = "????", icon = "??", onClick = onQrClick)
+            TopBarButton(label = "扫码点歌", icon = "📱", onClick = onQrClick)
             TopBarButton(
-                label = if (isVocalEliminated) "??" else "??",
-                icon = "??",
+                label = if (isVocalEliminated) "伴奏" else "原唱",
+                icon = "🎤",
                 isHighlighted = isVocalEliminated,
                 onClick = onVocalClick
             )
-            TopBarButton(label = "??", icon = "?", onClick = onSkipClick)
+            TopBarButton(label = "切歌", icon = "⏭", onClick = onSkipClick)
             TopBarButton(
-                label = if (isPlaying) "??" else "??",
-                icon = if (isPlaying) "?" else "?",
+                label = if (isPlaying) "暂停" else "播放",
+                icon = if (isPlaying) "⏸" else "▶",
                 onClick = onPlayPauseClick
             )
         }
@@ -1080,7 +1080,8 @@ fun PlaybackPreviewCard(
     onExpandClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val player = KtvPlayerManager.getPlayer()
+    val context = LocalContext.current
+    val player = KtvPlayerManager.getExoPlayer()
 
     TvFocusableItem(
         onClick = onExpandClick,
@@ -1089,10 +1090,16 @@ fun PlaybackPreviewCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0F172A), RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F172A), RoundedCornerShape(14.dp))
+                .border(
+                    width = if (isFocused) 2.dp else 1.dp,
+                    color = if (isFocused) KtvTheme.Accent else KtvTheme.CardBorder,
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .clip(RoundedCornerShape(14.dp))
         ) {
             if (currentPlaying != null && player != null) {
-                // Live ExoPlayer Surface View
+                // Active Video Player View
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
@@ -1108,7 +1115,7 @@ fun PlaybackPreviewCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Overlay gradient for text legibility
+                // Overlay gradient
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1119,7 +1126,7 @@ fun PlaybackPreviewCard(
                         )
                 )
 
-                // Current song info at bottom left
+                // Song info at bottom left
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -1127,12 +1134,12 @@ fun PlaybackPreviewCard(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = if (currentPlaying is PlayableItem.Mv) "🎬 MV 播放中" else "🎵 原唱音频",
+                            text = if (currentPlaying is PlayableItem.Mv) "🎬 1080P MV 播放中" else "🎵 原唱音频",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = KtvTheme.Accent,
                             modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -1147,7 +1154,7 @@ fun PlaybackPreviewCard(
                     )
                     Text(
                         text = currentPlaying.artist,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = KtvTheme.TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1155,7 +1162,7 @@ fun PlaybackPreviewCard(
                     )
                 }
 
-                // Expand button indicator at top right
+                // Fullscreen indicator at top right
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1166,32 +1173,54 @@ fun PlaybackPreviewCard(
                     Text("⛶ 全屏", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
-                // Empty state when no song is playing
+                // High-End Vinyl Turntable Idle Illustration
                 Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
+                    // Stylized Vinyl Record Graphic
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
-                            .background(Color(0xFF1E293B), CircleShape)
-                            .border(2.dp, Color(0xFF334155), CircleShape),
+                            .size(88.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF020617))
+                                ),
+                                CircleShape
+                            )
+                            .border(2.dp, KtvTheme.Accent.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🎵", fontSize = 34.sp)
+                        // Inner Vinyl Ring
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(KtvTheme.AccentGradient, CircleShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🎤", fontSize = 18.sp)
+                        }
                     }
+
                     Spacer(modifier = Modifier.height(14.dp))
+
                     Text(
-                        text = "当前暂无歌曲正在播放",
+                        text = "酷唱 KTV · 欢唱随时开启",
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                         color = Color.White
                     )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
                     Text(
-                        text = "点击右侧板块或顶部【搜索】快速点歌",
-                        fontSize = 13.sp,
-                        color = KtvTheme.TextMuted,
-                        modifier = Modifier.padding(top = 4.dp)
+                        text = "点播右侧热门金曲 或 顶部【搜索】快速开唱",
+                        fontSize = 12.sp,
+                        color = KtvTheme.TextMuted
                     )
                 }
             }
@@ -1203,6 +1232,7 @@ fun PlaybackPreviewCard(
 fun GridCard(
     title: String,
     subtitle: String,
+    tag: String = "",
     emoji: String,
     gradient: Brush,
     onClick: () -> Unit,
@@ -1215,9 +1245,47 @@ fun GridCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(gradient, RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .background(gradient, RoundedCornerShape(14.dp))
+                .border(
+                    width = if (isFocused) 2.dp else 1.dp,
+                    color = if (isFocused) KtvTheme.Accent else Color.White.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .padding(14.dp)
         ) {
+            // Top Right Badge & Emoji
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                if (tag.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = tag,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+
+                Text(
+                    text = emoji,
+                    fontSize = 32.sp,
+                    modifier = Modifier.scale(if (isFocused) 1.15f else 1.0f)
+                )
+            }
+
+            // Bottom Left Text
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -1225,30 +1293,20 @@ fun GridCard(
             ) {
                 Text(
                     text = title,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
                     color = Color.White,
-                    maxLines = 1,
-                    softWrap = false
+                    maxLines = 1
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.85f),
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    softWrap = false,
-                    modifier = Modifier.padding(top = 2.dp)
+                    maxLines = 1
                 )
             }
-
-            Text(
-                text = emoji,
-                fontSize = 34.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .scale(if (isFocused) 1.15f else 1.0f)
-            )
         }
     }
 }
@@ -1269,64 +1327,151 @@ fun TallFeatureCard(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color(0xFFFF416C), Color(0xFFFF4B2B))
+                        colors = listOf(Color(0xFF991B1B), Color(0xFF7F1D1D), Color(0xFF450A0A))
                     ),
-                    RoundedCornerShape(12.dp)
+                    RoundedCornerShape(14.dp)
                 )
-                .padding(16.dp)
+                .border(
+                    width = if (isFocused) 2.dp else 1.dp,
+                    color = if (isFocused) KtvTheme.Accent else Color(0xFFEF4444).copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .padding(14.dp)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Text(
-                    text = title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    maxLines = 1,
-                    softWrap = false
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "HOT SONGS",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.Bold,
-                    softWrap = false
-                )
-                Spacer(modifier = Modifier.height(14.dp))
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Header
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔥", fontSize = 18.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = title,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("TOP", color = Color(0xFFFCA5A5), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(
+                        text = "HOT SONGS · 实时飙升",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
-                songs.take(3).forEachIndexed { index, song ->
-                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                        Text(
-                            text = "${index + 1}. ${song.title}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = song.artist,
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.85f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 14.dp)
-                        )
+                // Adaptive Songs List (Takes up to 7 songs to fill height)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val displayList = songs.take(7)
+                    if (displayList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("榜单载入中...", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                        }
+                    } else {
+                        displayList.forEachIndexed { index, song ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (index < 3) Color.Black.copy(alpha = 0.2f) else Color.Transparent,
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .padding(vertical = 3.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Rank Badge
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .background(
+                                            when (index) {
+                                                0 -> Color(0xFFF59E0B) // Gold
+                                                1 -> Color(0xFF94A3B8) // Silver
+                                                2 -> Color(0xFFB45309) // Bronze
+                                                else -> Color.White.copy(alpha = 0.12f)
+                                            },
+                                            RoundedCornerShape(4.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = f"{index + 1}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (index < 2) Color.Black else Color.White
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = song.title,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = song.artist,
+                                        fontSize = 10.sp,
+                                        color = Color.White.copy(alpha = 0.65f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            // Big 🔥 Flame Emoji at Bottom Right Corner
-            Text(
-                text = "🔥",
-                fontSize = 48.sp,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .scale(if (isFocused) 1.2f else 1.0f)
-            )
+                // Footer Action Banner
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                        .padding(vertical = 5.dp, horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "查看完整榜单",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFCA5A5)
+                    )
+                    Text("➔", fontSize = 11.sp, color = Color(0xFFFCA5A5))
+                }
+            }
         }
     }
 }
+
 
 @Composable
 fun SongsListGrid(
@@ -2650,22 +2795,22 @@ fun ConceptQrLoginDialog(
 ) {
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var qrKey by remember { mutableStateOf("") }
-    var qrStatusText by remember { mutableStateOf("? ???????...") }
+    var qrStatusText by remember { mutableStateOf("⏳ 正在获取二维码...") }
     var isExpired by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     fun loadQr() {
-        qrStatusText = "? ???????..."
+        qrStatusText = "⏳ 正在获取二维码..."
         isExpired = false
         qrBitmap = null
         KugouApi.fetchConceptQrCode { result ->
             result.onSuccess { (key, url) ->
                 qrKey = key
                 qrBitmap = QrCodeUtils.generateQrCode(url, 320, 320)
-                qrStatusText = "? ????????????App ??"
+                qrStatusText = "⏳ 请使用手机【酷狗概念版】App 扫码"
             }
             result.onFailure {
-                qrStatusText = "? ?????????????"
+                qrStatusText = "❌ 二维码获取失败，请点击刷新"
                 isExpired = true
             }
         }
@@ -2685,13 +2830,13 @@ fun ConceptQrLoginDialog(
                     when (checkResult.status) {
                         0 -> {
                             isExpired = true
-                            qrStatusText = "?? ??????????"
+                            qrStatusText = "⚠️ 二维码已过期，请刷新"
                         }
                         1 -> {
-                            qrStatusText = "? ?????????????..."
+                            qrStatusText = "⏳ 等待手机【酷狗概念版】扫码..."
                         }
                         2 -> {
-                            qrStatusText = "?? ??????????????????"
+                            qrStatusText = "📱 扫描成功！请在手机上点击【确认登录】"
                         }
                         4 -> {
                             // Login successful!
@@ -2704,7 +2849,7 @@ fun ConceptQrLoginDialog(
                                 vipToken = checkResult.vipToken,
                                 isVip = checkResult.vipType > 0 || checkResult.vipToken.isNotEmpty()
                             )
-                            Toast.makeText(context, "?? ??????? ${checkResult.nickname}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "🎉 登录成功！欢迎 ${checkResult.nickname}", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         }
                     }
@@ -2719,7 +2864,7 @@ fun ConceptQrLoginDialog(
     ) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(460.dp)
                 .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
                 .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
@@ -2730,10 +2875,10 @@ fun ConceptQrLoginDialog(
             ) {
                 // Title
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("??", fontSize = 24.sp)
+                    Text("📱", fontSize = 24.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "????? ????",
+                        text = "酷狗概念版 扫码登录",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -2803,7 +2948,7 @@ fun ConceptQrLoginDialog(
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "?? ?????",
+                                text = "🔄 刷新二维码",
                                 color = if (isFocused) Color.Black else Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -2820,7 +2965,7 @@ fun ConceptQrLoginDialog(
                                 .padding(horizontal = 20.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "??",
+                                text = "关闭",
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -2855,7 +3000,7 @@ fun UserProfileDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header
-                Text("?? ??????", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("👤 当前登录账号", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
 
                 Spacer(modifier = Modifier.height(18.dp))
 
@@ -2866,7 +3011,7 @@ fun UserProfileDialog(
                         .background(KtvTheme.AccentGradient, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (userProfile.isVip) "??" else "??", fontSize = 32.sp)
+                    Text(if (userProfile.isVip) "👑" else "👤", fontSize = 32.sp)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -2881,7 +3026,7 @@ fun UserProfileDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = if (userProfile.isVip) "?? ????? VIP ???? (???????/??)" else "???? (????/????)",
+                    text = if (userProfile.isVip) "👑 酷狗概念版 VIP 尊贵会员 (可畅享全部伴奏/歌曲)" else "普通用户 (部分歌曲/伴奏受限)",
                     fontSize = 12.sp,
                     color = if (userProfile.isVip) Color(0xFFFDE047) else KtvTheme.TextMuted,
                     fontWeight = FontWeight.SemiBold
@@ -2899,7 +3044,7 @@ fun UserProfileDialog(
                                 )
                                 .padding(horizontal = 18.dp, vertical = 8.dp)
                         ) {
-                            Text("????", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("退出登录", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -2912,7 +3057,7 @@ fun UserProfileDialog(
                                 )
                                 .padding(horizontal = 22.dp, vertical = 8.dp)
                         ) {
-                            Text("??", color = if (isFocused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("关闭", color = if (isFocused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -2920,3 +3065,4 @@ fun UserProfileDialog(
         }
     }
 }
+

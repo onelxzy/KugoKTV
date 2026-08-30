@@ -75,7 +75,7 @@ object UserManager {
         val savedUserId = sp.getLong(KEY_USER_ID, 0L)
         val savedToken = sp.getString(KEY_TOKEN, null)
         if (savedUserId > 0L && !savedToken.isNullOrEmpty()) {
-            val nickname = sp.getString(KEY_NICKNAME, "???????") ?: "???????"
+            val nickname = sp.getString(KEY_NICKNAME, "酷狗概念版用户") ?: "酷狗概念版用户"
             val avatar = sp.getString(KEY_AVATAR, "") ?: ""
             val vipType = sp.getInt(KEY_VIP_TYPE, 0)
             val vipToken = sp.getString(KEY_VIP_TOKEN, "") ?: ""

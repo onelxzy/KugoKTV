@@ -56,7 +56,7 @@ data class AccompanimentMatchResult(
 )
 
 data class QrCheckResult(
-    val status: Int, // 0: ??, 1: ????, 2: ???, 4: ????
+    val status: Int, // 0: ???, 1: ????, 2: ???, 4: ????
     val userId: Long = 0L,
     val token: String = "",
     val nickname: String = "",
@@ -671,7 +671,7 @@ object KugouApi {
                         // Authorized successfully
                         val token = data.getSafeString("token")
                         val userId = data.get("userid")?.asLong ?: 0L
-                        val nickname = data.getSafeString("nickname", "username").ifEmpty { "???????" }
+                        val nickname = data.getSafeString("nickname", "username").ifEmpty { "酷狗概念版用户" }
                         val pic = data.getSafeString("pic", "avatar", "img")
                         val vipType = data.getSafeInt("vip_type", "viptype", default = 0)
                         val vipToken = data.getSafeString("vip_token", "viptoken")
@@ -777,7 +777,7 @@ object KugouApi {
     /**
      * Search official studio accompaniment for a given song.
      * Criteria:
-     * 1. Title contains "(??)", "????", "[??]", "????", "???" or "Instrumental".
+     * 1. Title contains "(??)", "???", "[??]", "????", "??" or "Instrumental".
      * 2. Cleaned title matches original song title.
      * 3. Artist matches or title includes artist.
      * 4. Duration tolerance check (abs(duration - originalDuration) <= 5 seconds).
@@ -793,8 +793,8 @@ object KugouApi {
             return
         }
 
-        val cleanTitle = songTitle.replace(Regex("\\(.*\\)|?.*?|\\[.*\\]|?.*?|<.*>|?.*?|??|??|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
-        val query = if (cleanTitle.isNotEmpty()) "$cleanTitle ??" else "$songTitle ??"
+        val cleanTitle = songTitle.replace(Regex("\\(.*\\)|?.*??|\\[.*\\]|?.*??|<.*>|?.*??|伴奏|伴唱|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
+        val query = if (cleanTitle.isNotEmpty()) "$cleanTitle 伴奏" else "$songTitle 伴奏"
 
         searchSong(query, page = 1, pageSize = 30) { result ->
             result.onSuccess { list ->
@@ -806,10 +806,10 @@ object KugouApi {
                 // Filter candidates
                 val candidates = list.filter { item ->
                     val t = item.title
-                    val hasAccTag = t.contains("??") || t.contains("??") || t.contains("Instrumental", ignoreCase = true) || t.contains("inst", ignoreCase = true)
+                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") || t.contains("Instrumental", ignoreCase = true) || t.contains("inst", ignoreCase = true)
                     if (!hasAccTag) return@filter false
 
-                    val itemCleanTitle = t.replace(Regex("\\(.*\\)|?.*?|\\[.*\\]|?.*?|<.*>|?.*?|??|??|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
+                    val itemCleanTitle = t.replace(Regex("\\(.*\\)|?.*??|\\[.*\\]|?.*??|<.*>|?.*??|伴奏|伴唱|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
                     val titleMatched = itemCleanTitle.equals(cleanTitle, ignoreCase = true) ||
                             itemCleanTitle.contains(cleanTitle, ignoreCase = true) ||
                             cleanTitle.contains(itemCleanTitle, ignoreCase = true)
@@ -817,7 +817,7 @@ object KugouApi {
 
                     val artistClean = artist.replace(Regex("\\s+"), "").lowercase()
                     val itemArtistClean = item.artist.replace(Regex("\\s+"), "").lowercase()
-                    val artistMatched = if (artistClean.isEmpty() || artistClean == "??" || itemArtistClean.isEmpty() || itemArtistClean == "??" || itemArtistClean == "??") {
+                    val artistMatched = if (artistClean.isEmpty() || artistClean == "群星" || itemArtistClean.isEmpty() || itemArtistClean == "群星" || itemArtistClean == "网络歌手") {
                         true
                     } else {
                         artistClean.contains(itemArtistClean) || itemArtistClean.contains(artistClean) || t.lowercase().contains(artistClean)

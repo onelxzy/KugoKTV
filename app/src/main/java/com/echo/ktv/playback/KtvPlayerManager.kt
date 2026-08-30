@@ -46,9 +46,9 @@ sealed class PlayableItem {
 }
 
 enum class AccompanimentSource {
-    NONE,           // ???????
-    OFFICIAL,       // ???????????
-    DSP_FALLBACK    // ?????????????
+    NONE,           // ???????????
+    OFFICIAL,       // ????????????
+    DSP_FALLBACK    // ??DSP??????
 }
 
 object KtvPlayerManager {
@@ -455,16 +455,16 @@ object KtvPlayerManager {
                 if (wasPlaying) p.play()
 
                                 val hint = if (accSource == AccompanimentSource.OFFICIAL || targetAccUrl == activeOfficialAccUrl) {
-                    "?? ??????????????"
+                    "🎉 已自动切换至酷狗官方高保真原版伴奏"
                 } else {
-                    "?? ?????????????"
+                    "🎙️ 暂无官方伴奏，已自动启用实时消音算法"
                 }
                 context?.let {
                     Toast.makeText(it, hint, Toast.LENGTH_SHORT).show()
                 }
             } else {
                 context?.let {
-                    Toast.makeText(it, "? ????????????????????...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "⏳ 正在生成实时消音伴奏，请稍候...", Toast.LENGTH_SHORT).show()
                 }
             }
         } else {
@@ -476,7 +476,7 @@ object KtvPlayerManager {
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
                 context?.let {
-                    Toast.makeText(it, "?? ?????????", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "🎵 已切换至原唱模式", Toast.LENGTH_SHORT).show()
                 }
             }
         }
