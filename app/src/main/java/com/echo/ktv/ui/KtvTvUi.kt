@@ -2991,13 +2991,15 @@ fun UserProfileDialog(
         }
     }
 
+    val isUserVip = userProfile.isVip || userProfile.token.isNotEmpty() || userProfile.vipType > 0
+
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(440.dp)
                 .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
                 .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
@@ -3014,11 +3016,11 @@ fun UserProfileDialog(
                 // Avatar / Nickname / VIP Status
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(68.dp)
                         .background(KtvTheme.AccentGradient, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (userProfile.isVip) "👑" else "👤", fontSize = 32.sp)
+                    Text(if (isUserVip) "👑" else "👤", fontSize = 34.sp)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -3030,18 +3032,50 @@ fun UserProfileDialog(
                     color = Color.White
                 )
 
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // VIP Badge
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isUserVip) Color(0xFFFDE047).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f),
+                            RoundedCornerShape(20.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (isUserVip) Color(0xFFFDE047).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f),
+                            RoundedCornerShape(20.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isUserVip) "👑 酷狗概念版 VIP 尊贵会员 (已激活)" else "普通用户",
+                        fontSize = 13.sp,
+                        color = if (isUserVip) Color(0xFFFDE047) else KtvTheme.TextMuted,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "UID: ${userProfile.userId}",
+                    fontSize = 12.sp,
+                    color = KtvTheme.TextMuted
+                )
+
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = if (userProfile.isVip) "👑 酷狗概念版 VIP 尊贵会员 (可畅享全部伴奏/歌曲)" else "普通用户 (部分歌曲/伴奏受限)",
-                    fontSize = 12.sp,
-                    color = if (userProfile.isVip) Color(0xFFFDE047) else KtvTheme.TextMuted,
-                    fontWeight = FontWeight.SemiBold
+                    text = "⚡ 1080P 超清 MV 原画 · 官方原版伴奏秒切 · VIP 极速解析通道",
+                    fontSize = 11.sp,
+                    color = KtvTheme.Accent.copy(alpha = 0.9f),
+                    fontWeight = FontWeight.Medium
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     TvFocusableItem(onClick = onLogout) { isFocused ->
                         Box(
                             modifier = Modifier
@@ -3049,7 +3083,7 @@ fun UserProfileDialog(
                                     if (isFocused) Color(0xFFE11D48) else Color(0xFF1E293B),
                                     RoundedCornerShape(8.dp)
                                 )
-                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                                .padding(horizontal = 20.dp, vertical = 9.dp)
                         ) {
                             Text("退出登录", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
@@ -3062,7 +3096,7 @@ fun UserProfileDialog(
                                     if (isFocused) KtvTheme.Accent else Color(0xFF334155),
                                     RoundedCornerShape(8.dp)
                                 )
-                                .padding(horizontal = 22.dp, vertical = 8.dp)
+                                .padding(horizontal = 24.dp, vertical = 9.dp)
                         ) {
                             Text("关闭", color = if (isFocused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
@@ -3072,4 +3106,3 @@ fun UserProfileDialog(
         }
     }
 }
-

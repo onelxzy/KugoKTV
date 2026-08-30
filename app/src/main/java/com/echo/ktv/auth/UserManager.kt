@@ -80,7 +80,7 @@ object UserManager {
             val avatar = sp.getString(KEY_AVATAR, "") ?: ""
             val vipType = sp.getInt(KEY_VIP_TYPE, 0)
             val vipToken = sp.getString(KEY_VIP_TOKEN, "") ?: ""
-            val isVip = sp.getBoolean(KEY_IS_VIP, vipType > 0 || vipToken.isNotEmpty())
+            val isVip = sp.getBoolean(KEY_IS_VIP, vipType > 0 || vipToken.isNotEmpty() || !savedToken.isNullOrEmpty())
 
             _userProfile.value = UserProfile(
                 userId = savedUserId,
@@ -104,7 +104,7 @@ object UserManager {
         vipToken: String = "",
         isVip: Boolean = false
     ) {
-        val finalIsVip = isVip || vipType > 0 || vipToken.isNotEmpty()
+        val finalIsVip = isVip || vipType > 0 || vipToken.isNotEmpty() || token.isNotEmpty()
         prefs?.edit()
             ?.putLong(KEY_USER_ID, userId)
             ?.putString(KEY_TOKEN, token)
