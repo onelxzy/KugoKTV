@@ -259,6 +259,8 @@ object KtvPlayerManager {
     private fun playItem(item: PlayableItem) {
         isHandlingPlayerError = false
         activeAccFileUrl = ""
+        activeOfficialAccUrl = ""
+        _accompanimentSource.value = AccompanimentSource.NONE
 
         val songItem = when (item) {
             is PlayableItem.Song -> item.songItem
@@ -271,11 +273,36 @@ object KtvPlayerManager {
             Toast.makeText(it, "🔍 正在为您检索《${songItem.title}》片源...", Toast.LENGTH_SHORT).show()
         }
 
+        // Parallel Task 1: Check official studio accompaniment FIRST
+        KugouApi.searchAccompaniment(songItem.title, songItem.artist, songItem.duration) { accResult ->
+            accResult.onSuccess { match ->
+                activeOfficialAccUrl = match.url
+                _accompanimentSource.value = AccompanimentSource.OFFICIAL
+                if (_isVocalEliminated.value) {
+                    applyVocalEliminationSwitch(true)
+                }
+            }
+            accResult.onFailure {
+                // If official accompaniment not found, fallback to DSP generation in background
+                _accompanimentSource.value = AccompanimentSource.DSP_FALLBACK
+                val context = appContext
+                if (context != null && activeOriginalUrl.isNotEmpty() && activeHash.isNotEmpty()) {
+                    KtvVocalEliminationGenerator.generateAccompaniment(context, activeOriginalUrl, activeHash, _dspSettings.value) { dspRes ->
+                        dspRes.onSuccess { accFile ->
+                            activeAccFileUrl = "file:///" + accFile.absolutePath
+                            if (_isVocalEliminated.value) {
+                                applyVocalEliminationSwitch(true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parallel Task 2: Resolve Video MV / Audio stream
         scope.launch {
-            // EchoMusic Pipeline: Query official MV via kmr_audio_mv and video_url
             KugouApi.resolveOfficialMv(songItem.albumAudioId, songItem.mvHash, songItem.title) { result ->
                 result.onSuccess { mvResult ->
-                    // Official 1080P/720P MP4 MV found!
                     val mvItem = MvItem(
                         title = if (mvResult.title.isNotEmpty()) mvResult.title else songItem.title,
                         artist = if (mvResult.artist.isNotEmpty()) mvResult.artist else songItem.artist,
@@ -349,7 +376,6 @@ object KtvPlayerManager {
 
     private fun startPlayback(url: String, hash: String = "") {
         activeOriginalUrl = url
-        activeAccFileUrl = ""
         activeHash = hash
         val context = appContext
 
@@ -362,14 +388,20 @@ object KtvPlayerManager {
                 p.volume = _musicVolume.value
                 p.prepare()
                 p.play()
+                if (_isVocalEliminated.value) {
+                    applyVocalEliminationSwitch(true)
+                }
             }
         }
 
-        // Trigger background accompaniment generation with active DSP settings
-        if (context != null && hash.isNotEmpty()) {
+        // Only trigger background DSP generation if official studio accompaniment is not available
+        if (context != null && hash.isNotEmpty() && activeOfficialAccUrl.isEmpty()) {
             KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash, _dspSettings.value) { result ->
                 result.onSuccess { accFile ->
                     activeAccFileUrl = "file:///" + accFile.absolutePath
+                    if (_accompanimentSource.value != AccompanimentSource.OFFICIAL) {
+                        _accompanimentSource.value = AccompanimentSource.DSP_FALLBACK
+                    }
                     if (_isVocalEliminated.value) {
                         applyVocalEliminationSwitch(true)
                     }
@@ -415,18 +447,16 @@ object KtvPlayerManager {
         }
     }
 
-    private fun applyVocalEliminationSwitch(enabled: Boolean) {
+        private fun applyVocalEliminationSwitch(enabled: Boolean) {
         val p = player ?: return
         val currentPos = p.currentPosition
         val wasPlaying = p.isPlaying
         val context = appContext
 
         if (enabled) {
-            val accSource = _accompanimentSource.value
             val targetAccUrl = when {
-                accSource == AccompanimentSource.OFFICIAL && activeOfficialAccUrl.isNotEmpty() -> activeOfficialAccUrl
-                activeAccFileUrl.isNotEmpty() -> activeAccFileUrl
                 activeOfficialAccUrl.isNotEmpty() -> activeOfficialAccUrl
+                activeAccFileUrl.isNotEmpty() -> activeAccFileUrl
                 else -> ""
             }
 
@@ -454,7 +484,7 @@ object KtvPlayerManager {
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
 
-                                val hint = if (accSource == AccompanimentSource.OFFICIAL || targetAccUrl == activeOfficialAccUrl) {
+                val hint = if (targetAccUrl == activeOfficialAccUrl) {
                     "🎉 已自动切换至酷狗官方高保真原版伴奏"
                 } else {
                     "🎙️ 暂无官方伴奏，已自动启用实时消音算法"
@@ -464,11 +494,25 @@ object KtvPlayerManager {
                 }
             } else {
                 context?.let {
-                    Toast.makeText(it, "⏳ 正在生成实时消音伴奏，请稍候...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "⏳ 正在检索官方伴奏与消音流，请稍候...", Toast.LENGTH_SHORT).show()
+                }
+                // Trigger fallback DSP generation if not already started
+                if (context != null && activeOriginalUrl.isNotEmpty() && activeHash.isNotEmpty() && activeAccFileUrl.isEmpty()) {
+                    KtvVocalEliminationGenerator.generateAccompaniment(context, activeOriginalUrl, activeHash, _dspSettings.value) { dspRes ->
+                        dspRes.onSuccess { accFile ->
+                            activeAccFileUrl = "file:///" + accFile.absolutePath
+                            if (_accompanimentSource.value != AccompanimentSource.OFFICIAL) {
+                                _accompanimentSource.value = AccompanimentSource.DSP_FALLBACK
+                            }
+                            if (_isVocalEliminated.value) {
+                                applyVocalEliminationSwitch(true)
+                            }
+                        }
+                    }
                 }
             }
         } else {
-            // Revert to ??
+            // Revert to original vocal
             if (activeOriginalUrl.isNotEmpty()) {
                 p.setMediaItem(MediaItem.fromUri(activeOriginalUrl))
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().clearOverrides().build()
