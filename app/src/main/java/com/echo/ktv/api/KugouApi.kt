@@ -446,12 +446,18 @@ object KugouApi {
                                 
                                 val h264 = record.getAsJsonObject("h264")
                                 if (h264 != null) {
-                                    targetHash = h264.getSafeString("hd_hash", "fhd_hash", "qhd_hash", "sd_hash")
+                                    targetHash = h264.getSafeString("fhd_hash", "hd_hash", "qhd_hash", "sd_hash", "hash")
+                                }
+                                if (targetHash.isEmpty()) {
+                                    val h265 = record.getAsJsonObject("h265")
+                                    if (h265 != null) {
+                                        targetHash = h265.getSafeString("fhd_hash", "hd_hash", "qhd_hash", "sd_hash", "hash")
+                                    }
                                 }
                                 if (targetHash.isEmpty()) {
                                     val mkv = record.getAsJsonObject("mkv")
                                     if (mkv != null) {
-                                        targetHash = mkv.getSafeString("qhd_hash", "sd_hash")
+                                        targetHash = mkv.getSafeString("fhd_hash", "hd_hash", "qhd_hash", "sd_hash", "hash")
                                     }
                                 }
                             }
@@ -485,7 +491,10 @@ object KugouApi {
     private fun fetchMvVideoUrl(mvHash: String, title: String, artist: String, callback: (Result<MvStreamResult>) -> Unit) {
         val lowerHash = mvHash.lowercase()
         val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val key = SignatureUtils.signKey(lowerHash, mid = "undefined", userId = "0", isLite = true)
+        val userId = UserManager.userId.ifEmpty { "0" }
+        val mid = UserManager.mid.ifEmpty { "undefined" }
+        val dfid = UserManager.dfid.ifEmpty { "-" }
+        val key = SignatureUtils.signKey(lowerHash, mid = mid, userId = userId, isLite = true)
 
         val vParams = mapOf(
             "appid" to SignatureUtils.LITE_APP_ID,
@@ -493,15 +502,15 @@ object KugouApi {
             "clienttime" to clientTime,
             "clientver" to SignatureUtils.LITE_CLIENT_VER,
             "cmd" to "123",
-            "dfid" to "-",
+            "dfid" to dfid,
             "ext" to "mp4",
             "hash" to lowerHash,
             "ismp3" to "0",
             "key" to key,
-            "mid" to "undefined",
+            "mid" to mid,
             "pid" to "1",
             "type" to "1",
-            "uuid" to "-"
+            "uuid" to UserManager.deviceId
         )
         val signature = SignatureUtils.signatureAndroidParams(vParams, isLite = true)
 
@@ -514,8 +523,8 @@ object KugouApi {
             .url(urlBuilder.build())
             .addHeader("x-router", "trackermv.kugou.com")
             .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
-            .addHeader("dfid", "-")
-            .addHeader("mid", "undefined")
+            .addHeader("dfid", dfid)
+            .addHeader("mid", mid)
             .addHeader("clienttime", clientTime)
             .build()
 
@@ -798,15 +807,14 @@ object KugouApi {
 
         searchSong(query, page = 1, pageSize = 30) { result ->
             result.onSuccess { list ->
-                if (list.isEmpty()) {
-                    mainHandler.post { callback(Result.failure(Exception("No accompaniment search results"))) }
-                    return@onSuccess
-                }
-
                 // Filter candidates
                 val candidates = list.filter { item ->
                     val t = item.title
-                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") || t.contains("Instrumental", ignoreCase = true) || t.contains("inst", ignoreCase = true)
+                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
+                            t.contains("Instrumental", ignoreCase = true) ||
+                            t.contains("inst", ignoreCase = true) ||
+                            t.contains("OFF VOCAL", ignoreCase = true) ||
+                            t.contains("Karaoke", ignoreCase = true)
                     if (!hasAccTag) return@filter false
 
                     val itemCleanTitle = t.replace(Regex("\\(.*\\)|?.*??|\\[.*\\]|?.*??|<.*>|?.*??|伴奏|伴唱|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
@@ -826,14 +834,60 @@ object KugouApi {
 
                     if (originalDuration > 0 && item.duration > 0) {
                         val durationDiff = Math.abs(item.duration - originalDuration)
-                        if (durationDiff > 5) return@filter false
+                        if (durationDiff > 8) return@filter false
                     }
 
                     true
                 }
 
                 if (candidates.isEmpty()) {
-                    mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found matching artist and duration"))) }
+                    // Try secondary fallback search with "$artist $cleanTitle ??" if first attempt had no match
+                    val query2 = "$artist $cleanTitle 伴奏".trim()
+                    if (query2 != query && cleanTitle.isNotEmpty()) {
+                        searchSong(query2, page = 1, pageSize = 30) { res2 ->
+                            res2.onSuccess { list2 ->
+                                val candidates2 = list2.filter { item ->
+                                    val t = item.title
+                                    val hasAccTag = t.contains("伴奏") || t.contains("伴唱") ||
+                                            t.contains("Instrumental", ignoreCase = true) ||
+                                            t.contains("inst", ignoreCase = true) ||
+                                            t.contains("OFF VOCAL", ignoreCase = true) ||
+                                            t.contains("Karaoke", ignoreCase = true)
+                                    if (!hasAccTag) return@filter false
+                                    if (originalDuration > 0 && item.duration > 0) {
+                                        val durationDiff = Math.abs(item.duration - originalDuration)
+                                        if (durationDiff > 8) return@filter false
+                                    }
+                                    true
+                                }
+                                if (candidates2.isNotEmpty()) {
+                                    val best2 = candidates2.minByOrNull { item ->
+                                        val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
+                                        val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
+                                        durDiff + artistBonus
+                                    } ?: candidates2.first()
+
+                                    fetchAudioStreamUrlByHash(best2.hash) { streamResult ->
+                                        streamResult.onSuccess { url ->
+                                            mainHandler.post {
+                                                callback(Result.success(AccompanimentMatchResult(best2.title, best2.artist, url, best2.hash, best2.duration)))
+                                            }
+                                        }
+                                        streamResult.onFailure {
+                                            mainHandler.post { callback(Result.failure(it)) }
+                                        }
+                                    }
+                                } else {
+                                    mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
+                                }
+                            }
+                            res2.onFailure {
+                                mainHandler.post { callback(Result.failure(it)) }
+                            }
+                        }
+                    } else {
+                        mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found"))) }
+                    }
                     return@onSuccess
                 }
 
@@ -857,26 +911,7 @@ object KugouApi {
                         mainHandler.post { callback(Result.success(match)) }
                     }
                     streamResult.onFailure {
-                        // Fallback: Try resolving via 163 outer stream URL with accompaniment keyword
-                        getSongAudioUrl("${best.title} ${best.artist}") { fallbackRes ->
-                            fallbackRes.onSuccess { fallbackUrl ->
-                                if (fallbackUrl != FALLBACK_AUDIO_URL) {
-                                    val match = AccompanimentMatchResult(
-                                        title = best.title,
-                                        artist = best.artist,
-                                        url = fallbackUrl,
-                                        hash = best.hash,
-                                        duration = best.duration
-                                    )
-                                    mainHandler.post { callback(Result.success(match)) }
-                                } else {
-                                    mainHandler.post { callback(Result.failure(Exception("Failed to resolve accompaniment audio URL"))) }
-                                }
-                            }
-                            fallbackRes.onFailure {
-                                mainHandler.post { callback(Result.failure(Exception("Failed to resolve accompaniment stream"))) }
-                            }
-                        }
+                        mainHandler.post { callback(Result.failure(it)) }
                     }
                 }
             }
