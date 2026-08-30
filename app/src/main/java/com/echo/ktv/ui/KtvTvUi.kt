@@ -1418,7 +1418,7 @@ fun TallFeatureCard(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = f"{index + 1}",
+                                        text = "${index + 1}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
                                         color = if (index < 2) Color.Black else Color.White
