@@ -482,15 +482,22 @@ object KtvPlayerManager {
         val context = appContext
 
         if (enabled) {
-            val current = _currentPlaying.value
-            val isMv = current is PlayableItem.Mv
-            val mvDuration = if (isMv) (current as PlayableItem.Mv).mvItem.duration else 0
+            val livePlayerDurationSec = if (p.duration > 0 && p.duration != androidx.media3.common.C.TIME_UNSET) {
+                (p.duration / 1000).toInt()
+            } else {
+                0
+            }
 
-            // Strict Timeline Alignment Check:
-            // If playing an MV, official studio accompaniment is ONLY used if its duration matches the MV (|mvDur - accDur| <= 4s).
-            // If the MV is a Cinematic/Game version with extra story/prologue (like 逆战), we automatically use local DSP消音 to ensure 100% video-audio sync!
-            val isOfficialAccSuitable = activeOfficialAccUrl.isNotEmpty() &&
-                    (!isMv || mvDuration <= 0 || activeOfficialAccDuration <= 0 || Math.abs(mvDuration - activeOfficialAccDuration) <= 4)
+            // Real-Time Ground-Truth Timeline Alignment Check:
+            // If livePlayerDurationSec > 0 and activeOfficialAccDuration > 0, verify they align within 4 seconds.
+            // For cinematic/game MVs like 逆战 (video 265s vs audio 229s), diff is 36s > 4s -> reject external studio audio!
+            val durationDiff = if (livePlayerDurationSec > 0 && activeOfficialAccDuration > 0) {
+                Math.abs(livePlayerDurationSec - activeOfficialAccDuration)
+            } else {
+                0
+            }
+
+            val isOfficialAccSuitable = activeOfficialAccUrl.isNotEmpty() && durationDiff <= 4
 
             val targetAccUrl = when {
                 isOfficialAccSuitable -> activeOfficialAccUrl
@@ -500,8 +507,9 @@ object KtvPlayerManager {
 
             if (targetAccUrl.isNotEmpty()) {
                 val current = _currentPlaying.value
-                if (current is PlayableItem.Mv && activeOriginalUrl.isNotEmpty()) {
-                    // MV: Combine MV Video stream + Accompaniment Audio stream with MergingMediaSource
+                val isMv = current is PlayableItem.Mv
+                if (isMv && activeOriginalUrl.isNotEmpty()) {
+                    // MV Video: Combine MV Video stream + Accompaniment Audio stream with MergingMediaSource
                     val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
                         .setUserAgent("Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
                         .setAllowCrossProtocolRedirects(true)
@@ -525,7 +533,7 @@ object KtvPlayerManager {
                 val hint = if (targetAccUrl == activeOfficialAccUrl) {
                     "🎉 已自动切换至酷狗官方高保真原版伴奏"
                 } else if (isMv && activeOfficialAccUrl.isNotEmpty() && !isOfficialAccSuitable) {
-                    "🎙️ 该 MV 含剧情片头，已启用精准音画同步消音伴奏"
+                    "🎙️ 该 MV 含长剧情片头，已自动启用精准音画同步消音"
                 } else {
                     "🎙️ 暂无官方伴奏，已自动启用实时消音算法"
                 }
@@ -560,7 +568,7 @@ object KtvPlayerManager {
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
                 context?.let {
-                    Toast.makeText(it, "🎵 已切换至原唱模式", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "🎤 已切换为原唱模式", Toast.LENGTH_SHORT).show()
                 }
             }
         }
