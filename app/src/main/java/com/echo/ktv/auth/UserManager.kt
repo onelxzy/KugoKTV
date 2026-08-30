@@ -144,6 +144,12 @@ object UserManager {
     val isVip: Boolean
         get() = _userProfile.value?.isVip == true
 
+    val userId: String
+        get() = _userProfile.value?.userId?.toString() ?: "0"
+
+    val token: String
+        get() = _userProfile.value?.token ?: ""
+
     /**
      * Standard KuGou MID Algorithm:
      * Hashes device UUID using MD5, interprets the 32-char hex string as a base-16 BigInteger, and returns decimal string.
