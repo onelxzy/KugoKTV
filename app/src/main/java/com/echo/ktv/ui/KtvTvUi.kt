@@ -2742,28 +2742,21 @@ fun ConceptQrLoginDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Prominent Concept Edition Notice Box
+                // Clean Concept Notice Tag
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF854D0E).copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFFEAB308).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .padding(10.dp)
+                        .background(KtvTheme.Accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                        .border(1.dp, KtvTheme.Accent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column {
-                        Text(
-                            text = "?? ????????????App ????",
-                            color = Color(0xFFFDE047),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "?? ?????? VIP ??????????????????? App",
-                            color = Color(0xFFFDE047).copy(alpha = 0.8f),
-                            fontSize = 11.sp
-                        )
-                    }
+                    Text(
+                        text = "📱 请使用手机【酷狗概念版】App 扫码登录",
+                        color = KtvTheme.Accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
