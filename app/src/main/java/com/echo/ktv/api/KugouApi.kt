@@ -713,21 +713,43 @@ object KugouApi {
             return
         }
 
-        val key = CryptoUtils.md5("${lowerHash}kgcloudv2")
-        val trackerUrls = listOf(
-            "http://trackercdn.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play",
-            "http://trackercdnbj.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play",
-            "http://trackersz.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key&pid=1&behavior=play"
+        val user = UserManager.userProfile.value
+        val userId = user?.userId?.toString() ?: "0"
+        val token = user?.token ?: ""
+        val vipToken = user?.vipToken ?: ""
+        val vipType = (user?.vipType ?: 0).toString()
+        val mid = UserManager.mid.ifEmpty { "0" }
+        val appid = SignatureUtils.LITE_APP_ID
+
+        // 1. VIP Tracker endpoints if user has token / vipToken
+        val key26 = CryptoUtils.md5("${lowerHash}kgcloudv2${appid}${mid}${userId}")
+        val vipTrackerUrls = if (token.isNotEmpty() || vipToken.isNotEmpty()) {
+            listOf(
+                "http://trackercdn.kugou.com/i/v2/?appid=$appid&version=11440&cmd=26&hash=$lowerHash&key=$key26&pid=1&behavior=play&mid=$mid&userid=$userId&vipType=$vipType&vipToken=$vipToken&token=$token",
+                "http://trackercdnbj.kugou.com/i/v2/?appid=$appid&version=11440&cmd=26&hash=$lowerHash&key=$key26&pid=1&behavior=play&mid=$mid&userid=$userId&vipType=$vipType&vipToken=$vipToken&token=$token"
+            )
+        } else {
+            emptyList()
+        }
+
+        // 2. Standard high-speed CDN tracker URLs (cmd=25)
+        val key25 = CryptoUtils.md5("${lowerHash}kgcloudv2")
+        val standardTrackerUrls = listOf(
+            "http://trackercdn.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key25&pid=1&behavior=play",
+            "http://trackercdnbj.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key25&pid=1&behavior=play",
+            "http://trackersz.kugou.com/i/v2/?cmd=25&hash=$lowerHash&key=$key25&pid=1&behavior=play"
         )
 
+        val allTrackerUrls = vipTrackerUrls + standardTrackerUrls
+
         fun tryTracker(index: Int) {
-            if (index >= trackerUrls.size) {
+            if (index >= allTrackerUrls.size) {
                 mainHandler.post { callback(Result.failure(Exception("Audio stream URL not found in Kugou tracker"))) }
                 return
             }
 
             val request = Request.Builder()
-                .url(trackerUrls[index])
+                .url(allTrackerUrls[index])
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 .build()
 
@@ -761,14 +783,6 @@ object KugouApi {
         tryTracker(0)
     }
 
-    /**
-     * Search official studio accompaniment for a given song.
-     * Criteria:
-     * 1. Title contains "(??)", "???", "[??]", "????", "??" or "Instrumental".
-     * 2. Cleaned title matches original song title.
-     * 3. Artist matches or title includes artist.
-     * 4. Duration tolerance check (abs(duration - originalDuration) <= 5 seconds).
-     */
     fun searchAccompaniment(
         songTitle: String,
         artist: String,

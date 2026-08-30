@@ -65,6 +65,7 @@ object KtvPlayerManager {
     private var activeOriginalUrl: String = ""
     private var activeAccFileUrl: String = ""
     private var activeOfficialAccUrl: String = ""
+    private var activeOfficialAccDuration: Int = 0
     private var activeHash: String = ""
 
     // Accompaniment Source State
@@ -260,6 +261,7 @@ object KtvPlayerManager {
         isHandlingPlayerError = false
         activeAccFileUrl = ""
         activeOfficialAccUrl = ""
+        activeOfficialAccDuration = 0
         _accompanimentSource.value = AccompanimentSource.NONE
 
         val songItem = when (item) {
@@ -277,6 +279,7 @@ object KtvPlayerManager {
         KugouApi.searchAccompaniment(songItem.title, songItem.artist, songItem.duration) { accResult ->
             accResult.onSuccess { match ->
                 activeOfficialAccUrl = match.url
+                activeOfficialAccDuration = match.duration
                 _accompanimentSource.value = AccompanimentSource.OFFICIAL
                 if (_isVocalEliminated.value) {
                     applyVocalEliminationSwitch(true)
@@ -454,8 +457,18 @@ object KtvPlayerManager {
         val context = appContext
 
         if (enabled) {
+            val current = _currentPlaying.value
+            val isMv = current is PlayableItem.Mv
+            val mvDuration = if (isMv) (current as PlayableItem.Mv).mvItem.duration else 0
+
+            // Strict Timeline Alignment Check:
+            // If playing an MV, official studio accompaniment is ONLY used if its duration matches the MV (|mvDur - accDur| <= 4s).
+            // If the MV is a Cinematic/Game version with extra story/prologue (like 逆战), we automatically use local DSP消音 to ensure 100% video-audio sync!
+            val isOfficialAccSuitable = activeOfficialAccUrl.isNotEmpty() &&
+                    (!isMv || mvDuration <= 0 || activeOfficialAccDuration <= 0 || Math.abs(mvDuration - activeOfficialAccDuration) <= 4)
+
             val targetAccUrl = when {
-                activeOfficialAccUrl.isNotEmpty() -> activeOfficialAccUrl
+                isOfficialAccSuitable -> activeOfficialAccUrl
                 activeAccFileUrl.isNotEmpty() -> activeAccFileUrl
                 else -> ""
             }
@@ -486,6 +499,8 @@ object KtvPlayerManager {
 
                 val hint = if (targetAccUrl == activeOfficialAccUrl) {
                     "🎉 已自动切换至酷狗官方高保真原版伴奏"
+                } else if (isMv && activeOfficialAccUrl.isNotEmpty() && !isOfficialAccSuitable) {
+                    "🎙️ 该 MV 含剧情片头，已启用精准音画同步消音伴奏"
                 } else {
                     "🎙️ 暂无官方伴奏，已自动启用实时消音算法"
                 }
