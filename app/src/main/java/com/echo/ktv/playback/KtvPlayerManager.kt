@@ -8,6 +8,10 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import com.echo.ktv.api.AccompanimentMatchResult
 import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.MvStreamResult
@@ -39,6 +43,12 @@ sealed class PlayableItem {
             is Mv -> mvItem.artist
             is Song -> songItem.artist
         }
+}
+
+enum class AccompanimentSource {
+    NONE,           // ???????
+    OFFICIAL,       // ???????????
+    DSP_FALLBACK    // ?????????????
 }
 
 object KtvPlayerManager {
@@ -125,6 +135,21 @@ object KtvPlayerManager {
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _isPlaying.value = isPlaying
+                    }
+
+                    override fun onTracksChanged(tracks: Tracks) {
+                        // When in accompaniment mode with MergingMediaSource on MV, ensure the accompaniment audio track is selected
+                        if (_isVocalEliminated.value && _currentPlaying.value is PlayableItem.Mv) {
+                            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                            if (audioGroups.size >= 2) {
+                                val accGroup = audioGroups.last()
+                                if (!accGroup.isSelected) {
+                                    player?.trackSelectionParameters = player?.trackSelectionParameters?.buildUpon()
+                                        ?.setOverrideForType(TrackSelectionOverride(accGroup.mediaTrackGroup, 0))
+                                        ?.build() ?: return
+                                }
+                            }
+                        }
                     }
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -369,6 +394,7 @@ object KtvPlayerManager {
         KtvVocalEliminationGenerator.generateAccompaniment(context, url, hash, _dspSettings.value) { result ->
             result.onSuccess { accFile ->
                 activeAccFileUrl = "file:///" + accFile.absolutePath
+                _accompanimentSource.value = AccompanimentSource.DSP_FALLBACK
                 if (_isVocalEliminated.value) {
                     applyVocalEliminationSwitch(true)
                 }
@@ -390,7 +416,15 @@ object KtvPlayerManager {
         val context = appContext
 
         if (enabled) {
-            if (activeAccFileUrl.isNotEmpty()) {
+            val accSource = _accompanimentSource.value
+            val targetAccUrl = when {
+                accSource == AccompanimentSource.OFFICIAL && activeOfficialAccUrl.isNotEmpty() -> activeOfficialAccUrl
+                activeAccFileUrl.isNotEmpty() -> activeAccFileUrl
+                activeOfficialAccUrl.isNotEmpty() -> activeOfficialAccUrl
+                else -> ""
+            }
+
+            if (targetAccUrl.isNotEmpty()) {
                 val current = _currentPlaying.value
                 if (current is PlayableItem.Mv && activeOriginalUrl.isNotEmpty()) {
                     // MV: Combine MV Video stream + Accompaniment Audio stream with MergingMediaSource
@@ -402,34 +436,41 @@ object KtvPlayerManager {
                     val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
                         .createMediaSource(MediaItem.fromUri(activeOriginalUrl))
                     val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri(activeAccFileUrl))
+                        .createMediaSource(MediaItem.fromUri(targetAccUrl))
 
-                    val mergedSource = MergingMediaSource(videoSource, audioSource)
+                    val mergedSource = MergingMediaSource(true, true, videoSource, audioSource)
                     p.setMediaSource(mergedSource)
                 } else {
-                    // Audio Song: Switch to Accompaniment WAV audio file
-                    p.setMediaItem(MediaItem.fromUri(activeAccFileUrl))
+                    // Audio Song: Switch to Accompaniment audio stream / WAV file
+                    p.setMediaItem(MediaItem.fromUri(targetAccUrl))
                 }
                 p.prepare()
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
+
+                val hint = if (accSource == AccompanimentSource.OFFICIAL || targetAccUrl == activeOfficialAccUrl) {
+                    "?? ??????????????"
+                } else {
+                    "?? ?????????????"
+                }
                 context?.let {
-                    Toast.makeText(it, "🎤 已切至【伴奏模式】", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, hint, Toast.LENGTH_SHORT).show()
                 }
             } else {
                 context?.let {
-                    Toast.makeText(it, "⏳ 正在合成伴奏中，稍后将自动切换...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "? ????????????????????...", Toast.LENGTH_SHORT).show()
                 }
             }
         } else {
-            // Revert to 原唱
+            // Revert to ??
             if (activeOriginalUrl.isNotEmpty()) {
                 p.setMediaItem(MediaItem.fromUri(activeOriginalUrl))
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().clearOverrides().build()
                 p.prepare()
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
                 context?.let {
-                    Toast.makeText(it, "🎤 已切至【原唱模式】", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(it, "?? ?????????", Toast.LENGTH_SHORT).show()
                 }
             }
         }

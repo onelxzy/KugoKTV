@@ -122,6 +122,7 @@ class KtvServerService : Service() {
                     val status = mapOf(
                         "isPlaying" to (KtvPlayerManager.getPlayer()?.isPlaying ?: false),
                         "isVocalEliminated" to KtvPlayerManager.isVocalEliminated.value,
+                        "accompanimentSource" to KtvPlayerManager.accompanimentSource.value.name,
                         "volume" to KtvPlayerManager.musicVolume.value,
                         "current" to if (current != null) mapOf(
                             "title" to current.title,

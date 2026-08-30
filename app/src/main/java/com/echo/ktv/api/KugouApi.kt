@@ -46,6 +46,14 @@ data class MvStreamResult(
     val hash: String
 )
 
+data class AccompanimentMatchResult(
+    val title: String,
+    val artist: String,
+    val url: String,
+    val hash: String,
+    val duration: Int
+)
+
 object KugouApi {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -531,6 +539,187 @@ object KugouApi {
                 }
             }
         })
+    }
+
+    // Resolve pure audio stream URL via Kugou Tracker API (/v2/interface/index with ismp3=1)
+    fun fetchAudioStreamUrlByHash(audioHash: String, callback: (Result<String>) -> Unit) {
+        val lowerHash = audioHash.lowercase()
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val key = SignatureUtils.signKey(lowerHash, mid = "undefined", userId = "0", isLite = true)
+
+        val vParams = mapOf(
+            "appid" to SignatureUtils.LITE_APP_ID,
+            "backupdomain" to "1",
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "cmd" to "123",
+            "dfid" to "-",
+            "ext" to "mp3",
+            "hash" to lowerHash,
+            "ismp3" to "1",
+            "key" to key,
+            "mid" to "undefined",
+            "pid" to "1",
+            "type" to "1",
+            "uuid" to "-"
+        )
+        val signature = SignatureUtils.signatureAndroidParams(vParams, isLite = true)
+
+        val urlBuilder = "https://gateway.kugou.com/v2/interface/index".toHttpUrl().newBuilder().apply {
+            vParams.forEach { (k, v) -> addQueryParameter(k, v) }
+            addQueryParameter("signature", signature)
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .addHeader("x-router", "tracker.kugou.com")
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .addHeader("dfid", "-")
+            .addHeader("mid", "undefined")
+            .addHeader("clienttime", clientTime)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    var downurl = json.get("url")?.asString
+                    if (downurl.isNullOrEmpty()) {
+                        val dataObj = json.getAsJsonObject("data")
+                        val hashObj = dataObj?.getAsJsonObject(lowerHash)
+                        downurl = hashObj?.get("downurl")?.asString
+                        if (downurl.isNullOrEmpty()) {
+                            downurl = hashObj?.getAsJsonArray("backupdownurl")?.get(0)?.asString
+                        }
+                    }
+                    if (!downurl.isNullOrEmpty()) {
+                        downurl = downurl.replace("\\/", "/")
+                        mainHandler.post { callback(Result.success(downurl)) }
+                    } else {
+                        mainHandler.post { callback(Result.failure(Exception("Audio URL not found in Kugou tracker"))) }
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.failure(e)) }
+                }
+            }
+        })
+    }
+
+    /**
+     * Search official studio accompaniment for a given song.
+     * Criteria:
+     * 1. Title contains "(??)", "????", "[??]", "????", "???" or "Instrumental".
+     * 2. Cleaned title matches original song title.
+     * 3. Artist matches or title includes artist.
+     * 4. Duration tolerance check (abs(duration - originalDuration) <= 5 seconds).
+     */
+    fun searchAccompaniment(
+        songTitle: String,
+        artist: String,
+        originalDuration: Int,
+        callback: (Result<AccompanimentMatchResult>) -> Unit
+    ) {
+        if (songTitle.isBlank()) {
+            mainHandler.post { callback(Result.failure(Exception("Song title is blank"))) }
+            return
+        }
+
+        val cleanTitle = songTitle.replace(Regex("\\(.*\\)|?.*?|\\[.*\\]|?.*?|<.*>|?.*?|??|??|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
+        val query = if (cleanTitle.isNotEmpty()) "$cleanTitle ??" else "$songTitle ??"
+
+        searchSong(query, page = 1, pageSize = 30) { result ->
+            result.onSuccess { list ->
+                if (list.isEmpty()) {
+                    mainHandler.post { callback(Result.failure(Exception("No accompaniment search results"))) }
+                    return@onSuccess
+                }
+
+                // Filter candidates
+                val candidates = list.filter { item ->
+                    val t = item.title
+                    val hasAccTag = t.contains("??") || t.contains("??") || t.contains("Instrumental", ignoreCase = true) || t.contains("inst", ignoreCase = true)
+                    if (!hasAccTag) return@filter false
+
+                    val itemCleanTitle = t.replace(Regex("\\(.*\\)|?.*?|\\[.*\\]|?.*?|<.*>|?.*?|??|??|Instrumental|inst", RegexOption.IGNORE_CASE), "").trim()
+                    val titleMatched = itemCleanTitle.equals(cleanTitle, ignoreCase = true) ||
+                            itemCleanTitle.contains(cleanTitle, ignoreCase = true) ||
+                            cleanTitle.contains(itemCleanTitle, ignoreCase = true)
+                    if (!titleMatched) return@filter false
+
+                    val artistClean = artist.replace(Regex("\\s+"), "").lowercase()
+                    val itemArtistClean = item.artist.replace(Regex("\\s+"), "").lowercase()
+                    val artistMatched = if (artistClean.isEmpty() || artistClean == "??" || itemArtistClean.isEmpty() || itemArtistClean == "??" || itemArtistClean == "??") {
+                        true
+                    } else {
+                        artistClean.contains(itemArtistClean) || itemArtistClean.contains(artistClean) || t.lowercase().contains(artistClean)
+                    }
+                    if (!artistMatched) return@filter false
+
+                    if (originalDuration > 0 && item.duration > 0) {
+                        val durationDiff = Math.abs(item.duration - originalDuration)
+                        if (durationDiff > 5) return@filter false
+                    }
+
+                    true
+                }
+
+                if (candidates.isEmpty()) {
+                    mainHandler.post { callback(Result.failure(Exception("No matching accompaniment found matching artist and duration"))) }
+                    return@onSuccess
+                }
+
+                // Pick the best match
+                val best = candidates.minByOrNull { item ->
+                    val durDiff = if (originalDuration > 0 && item.duration > 0) Math.abs(item.duration - originalDuration) else 0
+                    val artistBonus = if (item.artist.contains(artist, ignoreCase = true)) 0 else 5
+                    durDiff + artistBonus
+                } ?: candidates.first()
+
+                // Resolve audio stream URL
+                fetchAudioStreamUrlByHash(best.hash) { streamResult ->
+                    streamResult.onSuccess { url ->
+                        val match = AccompanimentMatchResult(
+                            title = best.title,
+                            artist = best.artist,
+                            url = url,
+                            hash = best.hash,
+                            duration = best.duration
+                        )
+                        mainHandler.post { callback(Result.success(match)) }
+                    }
+                    streamResult.onFailure {
+                        // Fallback: Try resolving via 163 outer stream URL with accompaniment keyword
+                        getSongAudioUrl("${best.title} ${best.artist}") { fallbackRes ->
+                            fallbackRes.onSuccess { fallbackUrl ->
+                                if (fallbackUrl != FALLBACK_AUDIO_URL) {
+                                    val match = AccompanimentMatchResult(
+                                        title = best.title,
+                                        artist = best.artist,
+                                        url = fallbackUrl,
+                                        hash = best.hash,
+                                        duration = best.duration
+                                    )
+                                    mainHandler.post { callback(Result.success(match)) }
+                                } else {
+                                    mainHandler.post { callback(Result.failure(Exception("Failed to resolve accompaniment audio URL"))) }
+                                }
+                            }
+                            fallbackRes.onFailure {
+                                mainHandler.post { callback(Result.failure(Exception("Failed to resolve accompaniment stream"))) }
+                            }
+                        }
+                    }
+                }
+            }
+            result.onFailure {
+                mainHandler.post { callback(Result.failure(it)) }
+            }
+        }
     }
 
     // Full-length High-Fidelity Audio Stream Resolver (bypasses 30s VIP preview)

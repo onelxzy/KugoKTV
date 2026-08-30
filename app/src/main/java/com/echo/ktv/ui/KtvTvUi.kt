@@ -56,6 +56,7 @@ import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.SingerItem
 import com.echo.ktv.api.SongItem
 import com.echo.ktv.playback.KtvPlayerManager
+import com.echo.ktv.playback.AccompanimentSource
 import com.echo.ktv.playback.PlayableItem
 import com.echo.ktv.server.IpUtils
 import com.echo.ktv.server.QrCodeUtils
