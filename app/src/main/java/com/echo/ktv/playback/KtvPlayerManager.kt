@@ -16,6 +16,7 @@ import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.MvStreamResult
 import com.echo.ktv.api.SongItem
+import com.echo.ktv.auth.UserManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -52,31 +53,6 @@ enum class AccompanimentSource {
 }
 
 object KtvPlayerManager {
-    init {
-        // Observe login & VIP status changes to auto-upgrade currently playing song's accompaniment in real-time
-        scope.launch(Dispatchers.Main) {
-            UserManager.userProfile.collect { profile ->
-                if (profile?.isVip == true && activeOfficialAccUrl.isEmpty()) {
-                    val current = _currentPlaying.value ?: return@collect
-                    val songItem = when (current) {
-                        is PlayableItem.Song -> current.songItem
-                        is PlayableItem.Mv -> SongItem(current.mvItem.title, current.mvItem.artist, current.mvItem.mvHash, "mv", current.mvItem.duration, current.mvItem.mvHash)
-                    }
-                    KugouApi.searchAccompaniment(songItem.title, songItem.artist, songItem.duration) { accResult ->
-                        accResult.onSuccess { match ->
-                            activeOfficialAccUrl = match.url
-                            activeOfficialAccDuration = match.duration
-                            _accompanimentSource.value = AccompanimentSource.OFFICIAL
-                            if (_isVocalEliminated.value) {
-                                applyVocalEliminationSwitch(true)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private var player: ExoPlayer? = null
     private var appContext: Context? = null
     private var sharedPreferences: SharedPreferences? = null
@@ -133,6 +109,31 @@ object KtvPlayerManager {
     val localSongs: StateFlow<List<SongItem>> = _localSongs
 
     private val scope = CoroutineScope(Dispatchers.Main)
+
+    init {
+        // Observe login & VIP status changes to auto-upgrade currently playing song's accompaniment in real-time
+        scope.launch(Dispatchers.Main) {
+            UserManager.userProfile.collect { profile ->
+                if (profile?.isVip == true && activeOfficialAccUrl.isEmpty()) {
+                    val current = _currentPlaying.value ?: return@collect
+                    val songItem = when (current) {
+                        is PlayableItem.Song -> current.songItem
+                        is PlayableItem.Mv -> SongItem(current.mvItem.title, current.mvItem.artist, current.mvItem.mvHash, "mv", current.mvItem.duration, current.mvItem.mvHash)
+                    }
+                    KugouApi.searchAccompaniment(songItem.title, songItem.artist, songItem.duration) { accResult ->
+                        accResult.onSuccess { match ->
+                            activeOfficialAccUrl = match.url
+                            activeOfficialAccDuration = match.duration
+                            _accompanimentSource.value = AccompanimentSource.OFFICIAL
+                            if (_isVocalEliminated.value) {
+                                applyVocalEliminationSwitch(true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     private var isHandlingPlayerError = false
 
     fun initialize(context: Context) {

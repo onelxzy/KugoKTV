@@ -2,6 +2,7 @@ package com.echo.ktv.api
 
 import android.content.Context
 import com.echo.ktv.auth.UserManager
+import com.echo.ktv.auth.UserProfile
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
