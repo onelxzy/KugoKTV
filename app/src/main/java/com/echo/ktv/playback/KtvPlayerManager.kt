@@ -448,7 +448,7 @@ object KtvPlayerManager {
                 p.seekTo(currentPos)
                 if (wasPlaying) p.play()
 
-                val hint = if (accSource == AccompanimentSource.OFFICIAL || targetAccUrl == activeOfficialAccUrl) {
+                                val hint = if (accSource == AccompanimentSource.OFFICIAL || targetAccUrl == activeOfficialAccUrl) {
                     "?? ??????????????"
                 } else {
                     "?? ?????????????"

@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.echo.ktv.auth.UserManager
 import com.echo.ktv.playback.KtvPlayerManager
 import com.echo.ktv.server.KtvServerService
 import com.echo.ktv.ui.KtvTheme
@@ -21,6 +22,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 0. Initialize User Manager (anti-fraud persistent device & auth session)
+        UserManager.init(this)
 
         // 1. Initialize Player Manager
         KtvPlayerManager.initialize(this)

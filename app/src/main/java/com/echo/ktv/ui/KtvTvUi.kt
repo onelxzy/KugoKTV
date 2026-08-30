@@ -55,6 +55,8 @@ import com.echo.ktv.api.KugouApi
 import com.echo.ktv.api.MvItem
 import com.echo.ktv.api.SingerItem
 import com.echo.ktv.api.SongItem
+import com.echo.ktv.auth.UserManager
+import com.echo.ktv.auth.UserProfile
 import com.echo.ktv.playback.KtvPlayerManager
 import com.echo.ktv.playback.AccompanimentSource
 import com.echo.ktv.playback.PlayableItem
@@ -172,6 +174,9 @@ fun MainTvScreen() {
     var currentCategoryName by remember { mutableStateOf("") }
     var showQrDialog by remember { mutableStateOf(false) }
     var showDspDialog by remember { mutableStateOf(false) }
+    var showLoginDialog by remember { mutableStateOf(false) }
+    var showUserProfileDialog by remember { mutableStateOf(false) }
+    val userProfile by UserManager.userProfile.collectAsState()
 
     var currentSingerId by remember { mutableStateOf(0) }
     var currentSingerName by remember { mutableStateOf("") }
@@ -257,6 +262,9 @@ fun MainTvScreen() {
                 // Top Action Bar (Clean 6 Essential Buttons)
                 TopBar(
                     selectedSize = totalSelectedCount,
+                    userProfile = userProfile,
+                    onLoginClick = { showLoginDialog = true },
+                    onUserProfileClick = { showUserProfileDialog = true },
                     onSearchClick = { currentTab = "search" },
                     onQueueClick = { currentTab = "queue" },
                     onQrClick = { showQrDialog = true },
@@ -673,6 +681,20 @@ fun MainTvScreen() {
     if (showDspDialog) {
         KtvDspTuningDialog(onDismiss = { showDspDialog = false })
     }
+    if (showLoginDialog) {
+        ConceptQrLoginDialog(onDismiss = { showLoginDialog = false })
+    }
+    if (showUserProfileDialog && userProfile != null) {
+        UserProfileDialog(
+            userProfile = userProfile!!,
+            onDismiss = { showUserProfileDialog = false },
+            onLogout = {
+                UserManager.logout()
+                showUserProfileDialog = false
+                Toast.makeText(context, "?? ?????", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 @Composable
@@ -878,6 +900,9 @@ fun KtvDspTuningDialog(
 @Composable
 fun TopBar(
     selectedSize: Int,
+    userProfile: UserProfile?,
+    onLoginClick: () -> Unit,
+    onUserProfileClick: () -> Unit,
     onSearchClick: () -> Unit,
     onQueueClick: () -> Unit,
     onQrClick: () -> Unit,
@@ -897,7 +922,7 @@ fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // App Title & Branding
+        // App Title, Branding & User Status Chip
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -905,11 +930,11 @@ fun TopBar(
                     .background(KtvTheme.AccentGradient, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🎤", fontSize = 18.sp)
+                Text("??", fontSize = 18.sp)
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "酷唱 KTV",
+                text = "?? KTV",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -924,28 +949,88 @@ fun TopBar(
                     .background(KtvTheme.Accent.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             )
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            // User Status Capsule (Compact, Anti-Wrap)
+            if (userProfile == null) {
+                TvFocusableItem(onClick = onLoginClick) { isFocused ->
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                if (isFocused) KtvTheme.Accent else Color(0xFF1E293B),
+                                RoundedCornerShape(20.dp)
+                            )
+                            .border(1.dp, if (isFocused) KtvTheme.Accent else Color(0xFF334155), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("??", fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "?????",
+                            fontSize = 12.sp,
+                            color = if (isFocused) Color.Black else Color(0xFF94A3B8),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            } else {
+                TvFocusableItem(onClick = onUserProfileClick) { isFocused ->
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                if (isFocused) KtvTheme.Accent else Color(0xFF1E293B),
+                                RoundedCornerShape(20.dp)
+                            )
+                            .border(1.dp, if (userProfile.isVip) Color(0xFFF59E0B) else Color(0xFF334155), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (userProfile.isVip) "??" else "??", fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = userProfile.nickname.take(4),
+                            fontSize = 12.sp,
+                            color = if (isFocused) Color.Black else if (userProfile.isVip) Color(0xFFFDE047) else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        if (userProfile.isVip) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "VIP",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isFocused) Color.Black else Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        // Action Buttons Row (6 Essential Buttons, fits comfortably with ample margin)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TopBarButton(label = "搜索", icon = "🔍", onClick = onSearchClick)
+        // Action Buttons Row (6 Essential Buttons with compact horizontal spacing)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TopBarButton(label = "??", icon = "??", onClick = onSearchClick)
             TopBarButton(
-                label = "已点 ($selectedSize)",
-                icon = "📋",
+                label = "?? ($selectedSize)",
+                icon = "??",
                 isHighlighted = selectedSize > 0,
                 onClick = onQueueClick
             )
-            TopBarButton(label = "扫码点歌", icon = "📱", onClick = onQrClick)
+            TopBarButton(label = "????", icon = "??", onClick = onQrClick)
             TopBarButton(
-                label = if (isVocalEliminated) "伴奏" else "原唱",
-                icon = "🎤",
+                label = if (isVocalEliminated) "??" else "??",
+                icon = "??",
                 isHighlighted = isVocalEliminated,
                 onClick = onVocalClick
             )
-            TopBarButton(label = "切歌", icon = "⏭", onClick = onSkipClick)
+            TopBarButton(label = "??", icon = "?", onClick = onSkipClick)
             TopBarButton(
-                label = if (isPlaying) "暂停" else "播放",
-                icon = if (isPlaying) "⏸" else "▶",
+                label = if (isPlaying) "??" else "??",
+                icon = if (isPlaying) "?" else "?",
                 onClick = onPlayPauseClick
             )
         }
@@ -2552,6 +2637,289 @@ fun VideoPlayerOverlay(
                                     KtvPlayerManager.setVolume(nextVol)
                                 }
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable
+fun ConceptQrLoginDialog(
+    onDismiss: () -> Unit
+) {
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var qrKey by remember { mutableStateOf("") }
+    var qrStatusText by remember { mutableStateOf("? ???????...") }
+    var isExpired by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    fun loadQr() {
+        qrStatusText = "? ???????..."
+        isExpired = false
+        qrBitmap = null
+        KugouApi.fetchConceptQrCode { result ->
+            result.onSuccess { (key, url) ->
+                qrKey = key
+                qrBitmap = QrCodeUtils.generateQrCode(url, 320, 320)
+                qrStatusText = "? ????????????App ??"
+            }
+            result.onFailure {
+                qrStatusText = "? ?????????????"
+                isExpired = true
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadQr()
+    }
+
+    // Polling login status every 2.5s (Anti-risk safe polling interval)
+    LaunchedEffect(qrKey) {
+        if (qrKey.isEmpty()) return@LaunchedEffect
+        while (!isExpired) {
+            delay(2500)
+            KugouApi.checkConceptQrCodeStatus(qrKey) { res ->
+                res.onSuccess { checkResult ->
+                    when (checkResult.status) {
+                        0 -> {
+                            isExpired = true
+                            qrStatusText = "?? ??????????"
+                        }
+                        1 -> {
+                            qrStatusText = "? ?????????????..."
+                        }
+                        2 -> {
+                            qrStatusText = "?? ??????????????????"
+                        }
+                        4 -> {
+                            // Login successful!
+                            UserManager.saveLogin(
+                                userId = checkResult.userId,
+                                token = checkResult.token,
+                                nickname = checkResult.nickname,
+                                avatarUrl = checkResult.avatarUrl,
+                                vipType = checkResult.vipType,
+                                vipToken = checkResult.vipToken,
+                                isVip = checkResult.vipType > 0 || checkResult.vipToken.isNotEmpty()
+                            )
+                            Toast.makeText(context, "?? ??????? ${checkResult.nickname}", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(480.dp)
+                .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
+                .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Title
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("??", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "????? ????",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Prominent Concept Edition Notice Box
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF854D0E).copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFFEAB308).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "?? ????????????App ????",
+                            color = Color(0xFFFDE047),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "?? ?????? VIP ??????????????????? App",
+                            color = Color(0xFFFDE047).copy(alpha = 0.8f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // QR Code Image Box
+                Box(
+                    modifier = Modifier
+                        .size(190.dp)
+                        .background(Color.White, RoundedCornerShape(10.dp))
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap!!.asImageBitmap(),
+                            contentDescription = "Concept Login QR",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        CircularProgressIndicator(color = KtvTheme.Accent, modifier = Modifier.size(36.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = qrStatusText,
+                    color = if (isExpired) Color(0xFFEF4444) else KtvTheme.Accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvFocusableItem(onClick = { loadQr() }) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isFocused) KtvTheme.Accent else Color(0xFF1E293B),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "?? ?????",
+                                color = if (isFocused) Color.Black else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    TvFocusableItem(onClick = onDismiss) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isFocused) Color(0xFFE11D48) else Color(0xFF334155),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 20.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "??",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UserProfileDialog(
+    userProfile: UserProfile,
+    onDismiss: () -> Unit,
+    onLogout: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(420.dp)
+                .background(Color(0xFF131C2E), RoundedCornerShape(16.dp))
+                .border(1.5.dp, KtvTheme.Accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header
+                Text("?? ??????", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Avatar / Nickname / VIP Status
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(KtvTheme.AccentGradient, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (userProfile.isVip) "??" else "??", fontSize = 32.sp)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = userProfile.nickname,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (userProfile.isVip) "?? ????? VIP ???? (???????/??)" else "???? (????/????)",
+                    fontSize = 12.sp,
+                    color = if (userProfile.isVip) Color(0xFFFDE047) else KtvTheme.TextMuted,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvFocusableItem(onClick = onLogout) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isFocused) Color(0xFFE11D48) else Color(0xFF1E293B),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                        ) {
+                            Text("????", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    TvFocusableItem(onClick = onDismiss) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isFocused) KtvTheme.Accent else Color(0xFF334155),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 22.dp, vertical = 8.dp)
+                        ) {
+                            Text("??", color = if (isFocused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

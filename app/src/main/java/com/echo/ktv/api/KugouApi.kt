@@ -1,6 +1,7 @@
 package com.echo.ktv.api
 
 import android.content.Context
+import com.echo.ktv.auth.UserManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -53,6 +54,17 @@ data class AccompanimentMatchResult(
     val hash: String,
     val duration: Int
 )
+
+data class QrCheckResult(
+    val status: Int, // 0: ??, 1: ????, 2: ???, 4: ????
+    val userId: Long = 0L,
+    val token: String = "",
+    val nickname: String = "",
+    val avatarUrl: String = "",
+    val vipType: Int = 0,
+    val vipToken: String = ""
+)
+
 
 object KugouApi {
     private val client = OkHttpClient.Builder()
@@ -541,28 +553,180 @@ object KugouApi {
         })
     }
 
+    // Web MD5 Signature Algorithm for QR Code endpoints (Salt: NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt)
+    private fun signatureWebParams(params: Map<String, String>): String {
+        val salt = "NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt"
+        val sortedParams = params.toSortedMap().map { "${it.key}=${it.value}" }.joinToString("")
+        return CryptoUtils.md5(salt + sortedParams + salt)
+    }
+
+    /**
+     * Request KuGou Concept Lite Login QR Code
+     * Returns Pair<qrKey, targetQrUrl>
+     */
+    fun fetchConceptQrCode(callback: (Result<Pair<String, String>>) -> Unit) {
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val mid = UserManager.mid
+        val dfid = UserManager.dfid
+
+        val params = mutableMapOf(
+            "appid" to "1001",
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "dfid" to dfid,
+            "mid" to mid,
+            "plat" to "4",
+            "qrcode_txt" to "https://h5.kugou.com/apps/loginQRCode/html/index.html?appid=${SignatureUtils.LITE_APP_ID}&",
+            "srcappid" to "2919",
+            "type" to "1",
+            "uuid" to "-"
+        )
+        val signature = signatureWebParams(params)
+        params["signature"] = signature
+
+        val urlBuilder = "https://login-user.kugou.com/v2/qrcode".toHttpUrl().newBuilder().apply {
+            params.forEach { (k, v) -> addQueryParameter(k, v) }
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .addHeader("dfid", dfid)
+            .addHeader("mid", mid)
+            .addHeader("clienttime", clientTime)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val data = json.getAsJsonObject("data")
+                    val qrcodeKey = data?.get("qrcode")?.asString ?: ""
+                    if (qrcodeKey.isNotEmpty()) {
+                        val qrUrl = "https://h5.kugou.com/apps/loginQRCode/html/index.html?qrcode=$qrcodeKey"
+                        mainHandler.post { callback(Result.success(Pair(qrcodeKey, qrUrl))) }
+                    } else {
+                        mainHandler.post { callback(Result.failure(Exception("Failed to generate QR code key"))) }
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.failure(e)) }
+                }
+            }
+        })
+    }
+
+    /**
+     * Poll KuGou Concept Lite Login QR Code Status
+     * Status codes: 0 = Expired, 1 = Waiting for scan, 2 = Scanned / Waiting confirmation, 4 = Authorized Success
+     */
+    fun checkConceptQrCodeStatus(qrKey: String, callback: (Result<QrCheckResult>) -> Unit) {
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val mid = UserManager.mid
+        val dfid = UserManager.dfid
+
+        val params = mutableMapOf(
+            "appid" to SignatureUtils.LITE_APP_ID,
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "dfid" to dfid,
+            "mid" to mid,
+            "plat" to "4",
+            "qrcode" to qrKey,
+            "srcappid" to "2919",
+            "uuid" to "-"
+        )
+        val signature = signatureWebParams(params)
+        params["signature"] = signature
+
+        val urlBuilder = "https://login-user.kugou.com/v2/get_userinfo_qrcode".toHttpUrl().newBuilder().apply {
+            params.forEach { (k, v) -> addQueryParameter(k, v) }
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .addHeader("dfid", dfid)
+            .addHeader("mid", mid)
+            .addHeader("clienttime", clientTime)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val data = json.getAsJsonObject("data")
+                    val status = data?.get("status")?.asInt ?: 1
+                    
+                    if (status == 4) {
+                        // Authorized successfully
+                        val token = data.getSafeString("token")
+                        val userId = data.get("userid")?.asLong ?: 0L
+                        val nickname = data.getSafeString("nickname", "username").ifEmpty { "???????" }
+                        val pic = data.getSafeString("pic", "avatar", "img")
+                        val vipType = data.getSafeInt("vip_type", "viptype", default = 0)
+                        val vipToken = data.getSafeString("vip_token", "viptoken")
+
+                        val result = QrCheckResult(
+                            status = 4,
+                            userId = userId,
+                            token = token,
+                            nickname = nickname,
+                            avatarUrl = pic,
+                            vipType = vipType,
+                            vipToken = vipToken
+                        )
+                        mainHandler.post { callback(Result.success(result)) }
+                    } else {
+                        mainHandler.post { callback(Result.success(QrCheckResult(status = status))) }
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.failure(e)) }
+                }
+            }
+        })
+    }
+
     // Resolve pure audio stream URL via Kugou Tracker API (/v2/interface/index with ismp3=1)
     fun fetchAudioStreamUrlByHash(audioHash: String, callback: (Result<String>) -> Unit) {
         val lowerHash = audioHash.lowercase()
         val clientTime = (System.currentTimeMillis() / 1000).toString()
-        val key = SignatureUtils.signKey(lowerHash, mid = "undefined", userId = "0", isLite = true)
+        val mid = UserManager.mid
+        val dfid = UserManager.dfid
+        val user = UserManager.userProfile.value
+        val userId = user?.userId?.toString() ?: "0"
+        val token = user?.token ?: ""
+        val key = SignatureUtils.signKey(lowerHash, mid = mid, userId = userId, isLite = true)
 
-        val vParams = mapOf(
+        val vParams = mutableMapOf(
             "appid" to SignatureUtils.LITE_APP_ID,
             "backupdomain" to "1",
             "clienttime" to clientTime,
             "clientver" to SignatureUtils.LITE_CLIENT_VER,
             "cmd" to "123",
-            "dfid" to "-",
+            "dfid" to dfid,
             "ext" to "mp3",
             "hash" to lowerHash,
             "ismp3" to "1",
             "key" to key,
-            "mid" to "undefined",
+            "mid" to mid,
             "pid" to "1",
             "type" to "1",
             "uuid" to "-"
         )
+        if (token.isNotEmpty()) {
+            vParams["token"] = token
+            vParams["userid"] = userId
+        }
         val signature = SignatureUtils.signatureAndroidParams(vParams, isLite = true)
 
         val urlBuilder = "https://gateway.kugou.com/v2/interface/index".toHttpUrl().newBuilder().apply {
@@ -574,8 +738,8 @@ object KugouApi {
             .url(urlBuilder.build())
             .addHeader("x-router", "tracker.kugou.com")
             .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
-            .addHeader("dfid", "-")
-            .addHeader("mid", "undefined")
+            .addHeader("dfid", dfid)
+            .addHeader("mid", mid)
             .addHeader("clienttime", clientTime)
             .build()
 
