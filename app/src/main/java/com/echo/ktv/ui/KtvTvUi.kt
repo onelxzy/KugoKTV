@@ -2849,6 +2849,7 @@ fun ConceptQrLoginDialog(
                                 vipToken = checkResult.vipToken,
                                 isVip = checkResult.vipType > 0 || checkResult.vipToken.isNotEmpty()
                             )
+                            KugouApi.fetchUserProfile(checkResult.userId, checkResult.token) { }
                             Toast.makeText(context, "🎉 登录成功！欢迎 ${checkResult.nickname}", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         }
@@ -2984,6 +2985,12 @@ fun UserProfileDialog(
     onDismiss: () -> Unit,
     onLogout: () -> Unit
 ) {
+    LaunchedEffect(userProfile.userId, userProfile.token) {
+        if (userProfile.userId > 0L && userProfile.token.isNotEmpty()) {
+            KugouApi.fetchUserProfile(userProfile.userId, userProfile.token) { }
+        }
+    }
+
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)

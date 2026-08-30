@@ -695,6 +695,11 @@ object KugouApi {
                             vipToken = vipToken
                         )
                         mainHandler.post { callback(Result.success(result)) }
+
+                        // Immediately fetch full VIP status and sync
+                        if (userId > 0L && token.isNotEmpty()) {
+                            fetchUserProfile(userId, token) { }
+                        }
                     } else {
                         mainHandler.post { callback(Result.success(QrCheckResult(status = status))) }
                     }
@@ -705,7 +710,84 @@ object KugouApi {
         })
     }
 
-    // Resolve pure audio stream URL via Kugou Tracker API (/v2/interface/index with ismp3=1)
+    /**
+     * Fetch complete user profile including VIP status, VIP token and expiration
+     */
+    fun fetchUserProfile(userId: Long, token: String, callback: (Result<UserProfile>) -> Unit = {}) {
+        if (userId <= 0L || token.isEmpty()) {
+            mainHandler.post { callback(Result.failure(Exception("Invalid credentials"))) }
+            return
+        }
+
+        val clientTime = (System.currentTimeMillis() / 1000).toString()
+        val params = mutableMapOf(
+            "appid" to SignatureUtils.LITE_APP_ID,
+            "clienttime" to clientTime,
+            "clientver" to SignatureUtils.LITE_CLIENT_VER,
+            "token" to token,
+            "userid" to userId.toString()
+        )
+        val signature = SignatureUtils.signatureAndroidParams(params, isLite = true)
+        params["signature"] = signature
+
+        val urlBuilder = "http://login.user.kugou.com/v1/login_by_token".toHttpUrl().newBuilder().apply {
+            params.forEach { (k, v) -> addQueryParameter(k, v) }
+        }
+
+        val request = Request.Builder()
+            .url(urlBuilder.build())
+            .addHeader("User-Agent", "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { callback(Result.failure(e)) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val body = response.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val data = json.getAsJsonObject("data")
+                    if (data != null) {
+                        val nickname = data.getSafeString("nickname", "username").ifEmpty { "酷狗概念版用户" }
+                        val pic = data.getSafeString("pic", "avatar", "img")
+                        val vipType = data.getSafeInt("vip_type", "viptype", default = 0)
+                        val vipToken = data.getSafeString("vip_token", "viptoken")
+                        val mType = data.getSafeInt("m_type", default = 0)
+                        val yType = data.getSafeInt("y_type", default = 0)
+                        val bType = data.getSafeInt("b_type", default = 0)
+                        val isVip = (vipType > 0 || mType > 0 || yType > 0 || bType > 0 || vipToken.isNotEmpty())
+
+                        val profile = UserProfile(
+                            userId = userId,
+                            token = token,
+                            nickname = nickname,
+                            avatarUrl = pic,
+                            vipType = if (vipType > 0) vipType else if (mType > 0) 6 else 0,
+                            vipToken = vipToken,
+                            isVip = isVip
+                        )
+                        UserManager.saveLogin(
+                            userId = profile.userId,
+                            token = profile.token,
+                            nickname = profile.nickname,
+                            avatarUrl = profile.avatarUrl,
+                            vipType = profile.vipType,
+                            vipToken = profile.vipToken,
+                            isVip = profile.isVip
+                        )
+                        mainHandler.post { callback(Result.success(profile)) }
+                        return
+                    }
+                    mainHandler.post { callback(Result.failure(Exception("Data null in login_by_token"))) }
+                } catch (e: Exception) {
+                    mainHandler.post { callback(Result.failure(e)) }
+                }
+            }
+        })
+    }
+
     fun fetchAudioStreamUrlByHash(audioHash: String, callback: (Result<String>) -> Unit) {
         val lowerHash = audioHash.lowercase().trim()
         if (lowerHash.isEmpty()) {

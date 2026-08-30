@@ -90,6 +90,7 @@ object UserManager {
                 vipToken = vipToken,
                 isVip = isVip
             )
+            KugouApi.fetchUserProfile(savedUserId, savedToken) { }
         }
     }
 
