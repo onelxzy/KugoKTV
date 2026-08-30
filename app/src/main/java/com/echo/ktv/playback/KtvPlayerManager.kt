@@ -52,6 +52,31 @@ enum class AccompanimentSource {
 }
 
 object KtvPlayerManager {
+    init {
+        // Observe login & VIP status changes to auto-upgrade currently playing song's accompaniment in real-time
+        scope.launch(Dispatchers.Main) {
+            UserManager.userProfile.collect { profile ->
+                if (profile?.isVip == true && activeOfficialAccUrl.isEmpty()) {
+                    val current = _currentPlaying.value ?: return@collect
+                    val songItem = when (current) {
+                        is PlayableItem.Song -> current.songItem
+                        is PlayableItem.Mv -> SongItem(current.mvItem.title, current.mvItem.artist, current.mvItem.mvHash, "mv", current.mvItem.duration, current.mvItem.mvHash)
+                    }
+                    KugouApi.searchAccompaniment(songItem.title, songItem.artist, songItem.duration) { accResult ->
+                        accResult.onSuccess { match ->
+                            activeOfficialAccUrl = match.url
+                            activeOfficialAccDuration = match.duration
+                            _accompanimentSource.value = AccompanimentSource.OFFICIAL
+                            if (_isVocalEliminated.value) {
+                                applyVocalEliminationSwitch(true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var player: ExoPlayer? = null
     private var appContext: Context? = null
     private var sharedPreferences: SharedPreferences? = null
