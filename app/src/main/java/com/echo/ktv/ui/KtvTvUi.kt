@@ -1081,7 +1081,7 @@ fun PlaybackPreviewCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val player = KtvPlayerManager.getExoPlayer()
+    val player = KtvPlayerManager.getPlayer()
 
     TvFocusableItem(
         onClick = onExpandClick,

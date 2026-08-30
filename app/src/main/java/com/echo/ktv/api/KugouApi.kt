@@ -980,11 +980,11 @@ object KugouApi {
 
     private fun getFallbackHotSongs(): List<SongItem> {
         return listOf(
-            SongItem("晴天", "周杰伦", "c2d3a672834b6b6697a4a2a4b8df77a2", "32100650", 269, "92b86da2e11c3c84de3a944ed12d97f1"),
-            SongItem("逆战", "张杰", "24d8eafee034896a678e8584f79eabe0", "27517488", 230, "6105dc34d0d3254662aac1182c3f8c2d"),
-            SongItem("十年", "陈奕迅", "f0a8d672834b6b6697a4a2a4b8df66a3", "40289835", 280, "afaa7726cff81edea6f461628fa0059b"),
-            SongItem("海阔天空", "Beyond", "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d", "32155307", 324, "60a8f37df53025cd66eb05a044ccae13"),
-            SongItem("七里香", "周杰伦", "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7", "32100651", 298, "d689622d640fb00f40d33e5b306b86cf")
+            SongItem("??", "???", "c2d3a672834b6b6697a4a2a4b8df77a2", "32100650", 269, "92b86da2e11c3c84de3a944ed12d97f1"),
+            SongItem("????", "???", "24d8eafee034896a678e8584f79eabe0", "27517488", 230, "6105dc34d0d3254662aac1182c3f8c2d"),
+            SongItem("??", "???", "f0a8d672834b6b6697a4a2a4b8df66a3", "40289835", 280, "afaa7726cff81edea6f461628fa0059b"),
+            SongItem("????", "Beyond", "8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d", "32155307", 324, "60a8f37df53025cd66eb05a044ccae13"),
+            SongItem("??", "???", "a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7", "32100651", 298, "d689622d640fb00f40d33e5b306b86cf")
         )
     }
 
