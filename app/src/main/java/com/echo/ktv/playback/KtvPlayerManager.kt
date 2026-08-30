@@ -61,10 +61,16 @@ object KtvPlayerManager {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    // Active playback URLs for seamless 原唱 / 伴奏 switching
+        // Active playback URLs for seamless ?? / ?? switching
     private var activeOriginalUrl: String = ""
     private var activeAccFileUrl: String = ""
+    private var activeOfficialAccUrl: String = ""
     private var activeHash: String = ""
+
+    // Accompaniment Source State
+    private val _accompanimentSource = MutableStateFlow(AccompanimentSource.NONE)
+    val accompanimentSource: StateFlow<AccompanimentSource> = _accompanimentSource
+
 
     // Playlist Queue
     private val _playlist = MutableStateFlow<List<PlayableItem>>(emptyList())
